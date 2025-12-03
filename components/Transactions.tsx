@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Search, Trash2, Edit2, X, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, Check } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
 import { Transaction, AppSettings, TransactionType, TransactionStatus, Account } from '../types';
 
 interface TransactionsProps {
@@ -15,12 +15,6 @@ interface TransactionsProps {
 
 type SortField = 'dataVencimento' | 'descricao' | 'valor' | 'entidade';
 type SortDirection = 'asc' | 'desc';
-
-// Mapping interface for CSV
-interface CsvMapping {
-  csvColumnIndex: number;
-  systemField: keyof Omit<Transaction, 'id'> | 'ignored';
-}
 
 const Transactions: React.FC<TransactionsProps> = ({ 
   transactions, accounts, settings, darkMode, onAdd, onDelete, onUpdate, onBulkAdd 
@@ -47,7 +41,6 @@ const Transactions: React.FC<TransactionsProps> = ({
   // Installment State (Form)
   const [isInstallment, setIsInstallment] = useState(false);
   const [installmentsCount, setInstallmentsCount] = useState(2);
-  const [installmentFreq, setInstallmentFreq] = useState<'monthly'>('monthly');
 
   // Initial Form State
   const initialFormState = {
