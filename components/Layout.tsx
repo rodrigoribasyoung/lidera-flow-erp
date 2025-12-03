@@ -5,7 +5,6 @@ import {
   ArrowRightLeft, 
   Settings, 
   PieChart, 
-  FileText, 
   Menu,
   X,
   Sun,

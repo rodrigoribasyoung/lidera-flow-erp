@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Filter, Search, Download, Trash2, Edit2, X, Upload } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Upload } from 'lucide-react';
 import { Transaction, AppSettings, TransactionType, TransactionStatus, Account } from '../types';
 
 interface TransactionsProps {
@@ -105,8 +105,8 @@ const Transactions: React.FC<TransactionsProps> = ({
       if (!line) continue;
 
       // Handle CSV parsing considering quoted fields with commas
-      const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
-      // Simple split for now since the example is mostly clean, but robust regex preferred for quotes
+      // Removed unused matches variable
+      
       const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
 
       // Mapping based on the provided CSV structure:
