@@ -35,9 +35,11 @@ const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme }) => {
   const sidebarBg = darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200';
   const mainBg = darkMode ? 'bg-zinc-950' : 'bg-slate-50';
   const textColor = darkMode ? 'text-zinc-100' : 'text-slate-800';
-  const logoText = darkMode 
-    ? 'bg-gradient-to-r from-amber-200 to-yellow-500 text-transparent bg-clip-text' 
-    : 'bg-gradient-to-r from-blue-600 to-cyan-500 text-transparent bg-clip-text';
+  
+  // Logo Logic
+  const logoUrl = darkMode 
+    ? "https://i.imgur.com/7gq3Tf6.png"  // White Logo for Dark Mode
+    : "https://i.imgur.com/2s0t654.png"; // Blue Logo for Light Mode
 
   const NavItem = ({ to, icon: Icon, label }: any) => (
     <NavLink
@@ -63,13 +65,15 @@ const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme }) => {
       
       {/* Sidebar for Desktop */}
       <aside className={`hidden md:flex w-64 flex-col border-r ${sidebarBg} transition-colors duration-300`}>
-        <div className="p-6 flex items-center justify-between">
-          <h1 className={`text-2xl font-bold tracking-tight ${logoText}`}>
-            Lidera Flow
-          </h1>
+        <div className="p-6 flex items-center justify-center">
+          <img 
+            src={logoUrl} 
+            alt="Lidera Flow Logo" 
+            className="h-16 w-auto object-contain transition-opacity duration-300" 
+          />
         </div>
         
-        <nav className="flex-1 px-4 space-y-2 mt-4">
+        <nav className="flex-1 px-4 space-y-2 mt-2">
           {navItems.map((item) => <NavItem key={item.to} {...item} />)}
         </nav>
 
@@ -92,7 +96,11 @@ const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme }) => {
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Mobile Header */}
         <header className={`md:hidden flex items-center justify-between p-4 border-b ${sidebarBg}`}>
-          <h1 className={`text-xl font-bold ${logoText}`}>Lidera Flow</h1>
+          <img 
+            src={logoUrl} 
+            alt="Lidera Flow Logo" 
+            className="h-10 w-auto object-contain" 
+          />
           <button onClick={toggleMobileMenu} className="p-2">
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -102,7 +110,11 @@ const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme }) => {
         {isMobileMenuOpen && (
           <div className={`absolute inset-0 z-50 ${sidebarBg} md:hidden flex flex-col p-4`}>
              <div className="flex justify-between items-center mb-8">
-                <h1 className={`text-2xl font-bold ${logoText}`}>Lidera Flow</h1>
+                <img 
+                  src={logoUrl} 
+                  alt="Lidera Flow Logo" 
+                  className="h-12 w-auto object-contain" 
+                />
                 <button onClick={toggleMobileMenu}><X size={24}/></button>
              </div>
              <nav className="space-y-2">
