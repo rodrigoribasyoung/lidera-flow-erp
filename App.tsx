@@ -5,8 +5,9 @@ import Dashboard from './components/Dashboard';
 import Transactions from './components/Transactions';
 import Settings from './components/Settings';
 import Reports from './components/Reports';
-import { Transaction, AppSettings } from './types';
-import { MOCK_TRANSACTIONS, MOCK_SETTINGS } from './constants';
+import Accounts from './components/Accounts';
+import { Transaction, AppSettings, Account } from './types';
+import { MOCK_TRANSACTIONS, MOCK_SETTINGS, MOCK_ACCOUNTS } from './constants';
 import { transactionService } from './services/firebase';
 
 const App: React.FC = () => {
@@ -17,6 +18,7 @@ const App: React.FC = () => {
 
   // Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>(MOCK_ACCOUNTS);
   const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
   const [loading, setLoading] = useState(true);
 
@@ -51,28 +53,39 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setDarkMode(!darkMode);
 
-  // Handlers (In a real app, these would call Firebase updates)
+  // Handlers
   const handleAddTransaction = async (t: Omit<Transaction, 'id'>) => {
     const newId = Math.random().toString(36).substr(2, 9);
     const newTransaction = { ...t, id: newId };
     setTransactions([newTransaction, ...transactions]);
-    // Fire & Forget firebase add
-    // transactionService.add(t);
+  };
+
+  const handleBulkAddTransactions = async (newTs: Omit<Transaction, 'id'>[]) => {
+    const processed = newTs.map(t => ({
+      ...t,
+      id: Math.random().toString(36).substr(2, 9)
+    }));
+    setTransactions([...processed, ...transactions]);
   };
 
   const handleDeleteTransaction = (id: string) => {
     setTransactions(transactions.filter(t => t.id !== id));
-    // transactionService.delete(id);
   };
 
   const handleUpdateTransaction = (id: string, updated: Partial<Transaction>) => {
     setTransactions(transactions.map(t => t.id === id ? { ...t, ...updated } : t));
-    // transactionService.update(id, updated);
   };
 
   const handleUpdateSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
-    // Would save to Firebase Settings collection
+  };
+
+  const handleAddAccount = (acc: Account) => {
+    setAccounts([...accounts, acc]);
+  };
+
+  const handleDeleteAccount = (id: string) => {
+     setAccounts(accounts.filter(a => a.id !== id));
   };
 
   if (loading) {
@@ -87,19 +100,42 @@ const App: React.FC = () => {
     <Router>
       <Layout darkMode={darkMode} toggleTheme={toggleTheme}>
         <Routes>
-          <Route path="/" element={<Dashboard transactions={transactions} darkMode={darkMode} />} />
+          <Route 
+            path="/" 
+            element={
+              <Dashboard 
+                transactions={transactions} 
+                accounts={accounts} 
+                darkMode={darkMode} 
+              />
+            } 
+          />
           <Route 
             path="/transactions" 
             element={
               <Transactions 
                 transactions={transactions} 
+                accounts={accounts}
                 settings={settings}
                 darkMode={darkMode}
                 onAdd={handleAddTransaction}
                 onDelete={handleDeleteTransaction}
                 onUpdate={handleUpdateTransaction}
+                onBulkAdd={handleBulkAddTransactions}
               />
             } 
+          />
+          <Route 
+            path="/accounts" 
+            element={
+              <Accounts 
+                 accounts={accounts} 
+                 transactions={transactions}
+                 darkMode={darkMode}
+                 onAddAccount={handleAddAccount}
+                 onDeleteAccount={handleDeleteAccount}
+              />
+            }
           />
           <Route 
             path="/reports"

@@ -1,4 +1,9 @@
-import { Transaction, AppSettings } from './types';
+import { Transaction, AppSettings, Account } from './types';
+
+export const MOCK_ACCOUNTS: Account[] = [
+  { id: 'acc1', name: 'Banco Inter', type: 'Corrente', initialBalance: 5000, color: '#FF7F00' },
+  { id: 'acc2', name: 'Caixa Física', type: 'Caixa', initialBalance: 1200, color: '#10B981' }
+];
 
 export const MOCK_SETTINGS: AppSettings = {
   categories: [
@@ -32,6 +37,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     produtoServico: 'Análise de Perfis',
     centroCusto: 'Ferramentas operacionais',
     formaPagamento: 'Boleto',
+    accountId: 'acc1',
     descricao: 'Análise de Perfis Comportamentais',
     valorPrevisto: 209.30,
     valorRealizado: 209.30,
@@ -49,6 +55,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     produtoServico: 'Consultoria',
     centroCusto: 'Consultoria',
     formaPagamento: 'Pix',
+    accountId: 'acc1',
     descricao: 'Consultoria Mensal',
     valorPrevisto: 1100.00,
     valorRealizado: 1100.00,
@@ -66,6 +73,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     produtoServico: '',
     centroCusto: 'Pro-labore',
     formaPagamento: 'Pix',
+    accountId: 'acc1',
     descricao: 'Pro-labore Sócios',
     valorPrevisto: 6000.00,
     valorRealizado: 3000.00,
@@ -83,6 +91,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     produtoServico: 'Mentoria',
     centroCusto: 'Mentoria',
     formaPagamento: 'Pix',
+    accountId: 'acc1',
     descricao: 'Mentoria | A Jornada do Líder 2/9',
     valorPrevisto: 200.00,
     valorRealizado: 0.00,
@@ -99,6 +108,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     produtoServico: '',
     centroCusto: 'Impostos',
     formaPagamento: 'Boleto',
+    accountId: 'acc1',
     descricao: 'Simples Nacional',
     valorPrevisto: 525.00,
     valorRealizado: 0.00,

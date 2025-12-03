@@ -1,47 +1,81 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend
+  PieChart, Pie, Cell, Legend, LineChart, Line
 } from 'recharts';
-import { ArrowUpCircle, ArrowDownCircle, DollarSign, Wallet } from 'lucide-react';
-import { Transaction } from '../types';
+import { ArrowUpCircle, ArrowDownCircle, DollarSign, Wallet, Calendar, Filter } from 'lucide-react';
+import { Transaction, Account } from '../types';
 
 interface DashboardProps {
   transactions: Transaction[];
+  accounts: Account[];
   darkMode: boolean;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, darkMode }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode }) => {
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedAccount, setSelectedAccount] = useState<string>('all');
+
+  // Filter transactions based on selection
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      const date = new Date(t.dataCompetencia);
+      const monthMatch = date.getMonth() === selectedMonth;
+      const yearMatch = date.getFullYear() === selectedYear;
+      const accountMatch = selectedAccount === 'all' || t.accountId === selectedAccount;
+      return monthMatch && yearMatch && accountMatch;
+    });
+  }, [transactions, selectedMonth, selectedYear, selectedAccount]);
+
+  // Overall Balance Calculation (Not filtered by date, but by account)
+  const currentTotalBalance = useMemo(() => {
+    // Start with initial balances
+    let total = accounts
+      .filter(a => selectedAccount === 'all' || a.id === selectedAccount)
+      .reduce((acc, curr) => acc + curr.initialBalance, 0);
+
+    // Add all historical transactions up to today for selected account
+    transactions.forEach(t => {
+      if (selectedAccount !== 'all' && t.accountId !== selectedAccount) return;
+      if (t.status === 'Pago' || t.status === 'Recebido') {
+        if (t.tipo === 'Entrada') total += t.valorRealizado;
+        else total -= t.valorRealizado;
+      }
+    });
+    return total;
+  }, [accounts, transactions, selectedAccount]);
   
   const metrics = useMemo(() => {
-    const totalIncome = transactions
-      .filter(t => t.tipo === 'Entrada' && (t.status === 'Recebido' || t.status === 'Pago')) // Assuming Pago used mistakenly for Entrada sometimes or just 'Recebido'
+    const totalIncome = filteredTransactions
+      .filter(t => t.tipo === 'Entrada' && (t.status === 'Recebido' || t.status === 'Pago'))
       .reduce((acc, curr) => acc + curr.valorRealizado, 0);
 
-    const totalExpense = transactions
+    const totalExpense = filteredTransactions
       .filter(t => t.tipo === 'Saída' && t.status === 'Pago')
       .reduce((acc, curr) => acc + curr.valorRealizado, 0);
 
-    const pendingIncome = transactions
+    const pendingIncome = filteredTransactions
       .filter(t => t.tipo === 'Entrada' && t.status === 'A receber')
       .reduce((acc, curr) => acc + curr.valorPrevisto, 0);
 
-    const pendingExpense = transactions
+    const pendingExpense = filteredTransactions
       .filter(t => t.tipo === 'Saída' && t.status === 'A pagar')
       .reduce((acc, curr) => acc + curr.valorPrevisto, 0);
 
     return {
       totalIncome,
       totalExpense,
-      balance: totalIncome - totalExpense,
+      balance: currentTotalBalance, // This is total balance, not just period balance
+      periodBalance: totalIncome - totalExpense,
       pendingIncome,
       pendingExpense
     };
-  }, [transactions]);
+  }, [filteredTransactions, currentTotalBalance]);
 
   const categoryData = useMemo(() => {
     const data: Record<string, number> = {};
-    transactions.forEach(t => {
+    filteredTransactions.forEach(t => {
       if (t.tipo === 'Saída') {
         data[t.categoria] = (data[t.categoria] || 0) + (t.status === 'Pago' ? t.valorRealizado : t.valorPrevisto);
       }
@@ -49,7 +83,70 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, darkMode }) => {
     return Object.keys(data).map(name => ({ name, value: data[name] }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [transactions]);
+  }, [filteredTransactions]);
+
+  // History Data (Last 6 Months)
+  const historyData = useMemo(() => {
+    const data = [];
+    const today = new Date();
+    for(let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const monthName = d.toLocaleString('pt-BR', { month: 'short' });
+      
+      const income = transactions.filter(t => {
+        const tDate = new Date(t.dataCompetencia);
+        return tDate.getMonth() === d.getMonth() && 
+               tDate.getFullYear() === d.getFullYear() && 
+               t.tipo === 'Entrada' && 
+               (selectedAccount === 'all' || t.accountId === selectedAccount) &&
+               (t.status === 'Recebido' || t.status === 'Pago');
+      }).reduce((acc, t) => acc + t.valorRealizado, 0);
+
+      const expense = transactions.filter(t => {
+        const tDate = new Date(t.dataCompetencia);
+        return tDate.getMonth() === d.getMonth() && 
+               tDate.getFullYear() === d.getFullYear() && 
+               t.tipo === 'Saída' && 
+               (selectedAccount === 'all' || t.accountId === selectedAccount) &&
+               t.status === 'Pago';
+      }).reduce((acc, t) => acc + t.valorRealizado, 0);
+
+      data.push({ name: monthName, Receitas: income, Despesas: expense });
+    }
+    return data;
+  }, [transactions, selectedAccount]);
+
+  // Cash Flow Projection (Next 30 days)
+  const projectionData = useMemo(() => {
+    const data = [];
+    let runningBalance = currentTotalBalance;
+    const today = new Date();
+    
+    // Sort future transactions by date
+    const futureTransactions = transactions
+      .filter(t => {
+        const tDate = new Date(t.dataVencimento);
+        return tDate >= today && 
+               (selectedAccount === 'all' || t.accountId === selectedAccount) &&
+               (t.status === 'A pagar' || t.status === 'A receber');
+      })
+      .sort((a, b) => new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime());
+
+    // Group by day for the next few entries
+    data.push({ date: 'Hoje', saldo: runningBalance });
+    
+    // Simple projection logic
+    let tempBalance = runningBalance;
+    futureTransactions.slice(0, 10).forEach(t => {
+       if (t.tipo === 'Entrada') tempBalance += t.valorPrevisto;
+       else tempBalance -= t.valorPrevisto;
+       
+       const dateLabel = new Date(t.dataVencimento).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+       data.push({ date: dateLabel, saldo: tempBalance });
+    });
+    
+    return data;
+  }, [transactions, currentTotalBalance, selectedAccount]);
 
   // Colors
   const COLORS = darkMode 
@@ -59,16 +156,58 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, darkMode }) => {
   const cardBg = darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm';
   const textColor = darkMode ? 'text-zinc-100' : 'text-slate-800';
   const subText = darkMode ? 'text-zinc-400' : 'text-slate-500';
+  const inputBg = darkMode ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-300 text-slate-900';
 
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      {/* Filters Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-4">
         <div>
-          <h2 className={`text-2xl font-bold ${textColor}`}>Visão Geral</h2>
-          <p className={subText}>Resumo financeiro e projeções</p>
+          <h2 className={`text-2xl font-bold ${textColor}`}>Dashboard</h2>
+          <p className={subText}>Visão geral da saúde financeira</p>
+        </div>
+        
+        <div className="flex flex-wrap gap-2 items-center">
+           <div className={`flex items-center gap-2 p-2 rounded-lg border ${inputBg}`}>
+              <Calendar size={18} className={subText} />
+              <select 
+                value={selectedMonth} 
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="bg-transparent outline-none cursor-pointer"
+              >
+                {Array.from({length: 12}, (_, i) => (
+                  <option key={i} value={i} className={darkMode ? 'bg-zinc-900' : 'bg-white'}>
+                    {new Date(0, i).toLocaleString('pt-BR', { month: 'long' })}
+                  </option>
+                ))}
+              </select>
+              <select 
+                value={selectedYear} 
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="bg-transparent outline-none cursor-pointer"
+              >
+                 {[2024, 2025, 2026].map(y => (
+                    <option key={y} value={y} className={darkMode ? 'bg-zinc-900' : 'bg-white'}>{y}</option>
+                 ))}
+              </select>
+           </div>
+
+           <div className={`flex items-center gap-2 p-2 rounded-lg border ${inputBg}`}>
+              <Filter size={18} className={subText} />
+              <select 
+                 value={selectedAccount} 
+                 onChange={(e) => setSelectedAccount(e.target.value)}
+                 className="bg-transparent outline-none cursor-pointer max-w-[150px]"
+              >
+                 <option value="all" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Todas as Contas</option>
+                 {accounts.map(a => (
+                   <option key={a.id} value={a.id} className={darkMode ? 'bg-zinc-900' : 'bg-white'}>{a.name}</option>
+                 ))}
+              </select>
+           </div>
         </div>
       </div>
 
@@ -76,17 +215,18 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, darkMode }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className={`p-6 rounded-xl border ${cardBg}`}>
           <div className="flex items-center justify-between mb-4">
-            <span className={subText}>Saldo Atual</span>
+            <span className={subText}>Saldo Acumulado</span>
             <Wallet className={darkMode ? 'text-yellow-500' : 'text-blue-500'} size={20} />
           </div>
           <div className={`text-2xl font-bold ${metrics.balance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
             {formatCurrency(metrics.balance)}
           </div>
+          <div className={`text-xs mt-1 ${subText}`}>Todas as contas</div>
         </div>
 
         <div className={`p-6 rounded-xl border ${cardBg}`}>
           <div className="flex items-center justify-between mb-4">
-            <span className={subText}>Receitas (Realizado)</span>
+            <span className={subText}>Receitas (Mês)</span>
             <ArrowUpCircle className="text-emerald-500" size={20} />
           </div>
           <div className={`text-2xl font-bold ${textColor}`}>
@@ -99,7 +239,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, darkMode }) => {
 
         <div className={`p-6 rounded-xl border ${cardBg}`}>
           <div className="flex items-center justify-between mb-4">
-            <span className={subText}>Despesas (Realizado)</span>
+            <span className={subText}>Despesas (Mês)</span>
             <ArrowDownCircle className="text-red-500" size={20} />
           </div>
           <div className={`text-2xl font-bold ${textColor}`}>
@@ -112,21 +252,63 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, darkMode }) => {
 
         <div className={`p-6 rounded-xl border ${cardBg}`}>
           <div className="flex items-center justify-between mb-4">
-            <span className={subText}>Fluxo Líquido</span>
+            <span className={subText}>Resultado do Período</span>
             <DollarSign className={darkMode ? 'text-yellow-500' : 'text-blue-500'} size={20} />
           </div>
-          <div className={`text-2xl font-bold ${metrics.totalIncome - metrics.totalExpense >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            {formatCurrency(metrics.totalIncome - metrics.totalExpense)}
+          <div className={`text-2xl font-bold ${metrics.periodBalance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+            {formatCurrency(metrics.periodBalance)}
           </div>
         </div>
       </div>
 
-      {/* Charts Row */}
+      {/* Charts Row 1: History & Projection */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* History Chart */}
+        <div className={`p-6 rounded-xl border ${cardBg}`}>
+           <h3 className={`font-semibold mb-6 ${textColor}`}>Histórico Semestral (Realizado)</h3>
+           <div className="h-64">
+             <ResponsiveContainer width="100%" height="100%">
+               <BarChart data={historyData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#3f3f46' : '#e2e8f0'} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: darkMode ? '#a1a1aa' : '#64748b', fontSize: 12 }} />
+                  <YAxis hide />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: darkMode ? '#18181b' : '#fff', borderColor: darkMode ? '#27272a' : '#e2e8f0', color: darkMode ? '#fff' : '#000' }}
+                    formatter={(value: number) => formatCurrency(value)}
+                  />
+                  <Legend />
+                  <Bar dataKey="Receitas" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Despesas" fill="#ef4444" radius={[4, 4, 0, 0]} />
+               </BarChart>
+             </ResponsiveContainer>
+           </div>
+        </div>
+
+        {/* Projection Chart */}
+        <div className={`p-6 rounded-xl border ${cardBg}`}>
+           <h3 className={`font-semibold mb-6 ${textColor}`}>Projeção de Fluxo de Caixa (30 dias)</h3>
+           <div className="h-64">
+             <ResponsiveContainer width="100%" height="100%">
+               <LineChart data={projectionData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#3f3f46' : '#e2e8f0'} vertical={false} />
+                  <XAxis dataKey="date" tick={{ fill: darkMode ? '#a1a1aa' : '#64748b', fontSize: 12 }} />
+                  <YAxis hide />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: darkMode ? '#18181b' : '#fff', borderColor: darkMode ? '#27272a' : '#e2e8f0', color: darkMode ? '#fff' : '#000' }}
+                    formatter={(value: number) => formatCurrency(value)}
+                  />
+                  <Line type="monotone" dataKey="saldo" stroke={darkMode ? '#fbbf24' : '#3b82f6'} strokeWidth={3} dot={{r: 4}} />
+               </LineChart>
+             </ResponsiveContainer>
+           </div>
+        </div>
+      </div>
+
+      {/* Charts Row 2: Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Bar Chart */}
         <div className={`lg:col-span-2 p-6 rounded-xl border ${cardBg}`}>
-           <h3 className={`font-semibold mb-6 ${textColor}`}>Fluxo de Caixa (Top Categorias de Despesa)</h3>
-           <div className="h-80">
+           <h3 className={`font-semibold mb-6 ${textColor}`}>Top Categorias de Despesa ({new Date(selectedYear, selectedMonth).toLocaleString('pt-BR', {month:'long'})})</h3>
+           <div className="h-64">
              <ResponsiveContainer width="100%" height="100%">
                <BarChart data={categoryData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#3f3f46' : '#e2e8f0'} horizontal={false} />
@@ -134,15 +316,11 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, darkMode }) => {
                   <YAxis 
                     dataKey="name" 
                     type="category" 
-                    width={100} 
+                    width={120} 
                     tick={{ fill: darkMode ? '#a1a1aa' : '#64748b', fontSize: 12 }} 
                   />
                   <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: darkMode ? '#18181b' : '#fff', 
-                      borderColor: darkMode ? '#27272a' : '#e2e8f0',
-                      color: darkMode ? '#fff' : '#000'
-                    }}
+                    contentStyle={{ backgroundColor: darkMode ? '#18181b' : '#fff', borderColor: darkMode ? '#27272a' : '#e2e8f0', color: darkMode ? '#fff' : '#000' }}
                     formatter={(value: number) => formatCurrency(value)}
                   />
                   <Bar dataKey="value" fill={darkMode ? '#fbbf24' : '#3b82f6'} radius={[0, 4, 4, 0]} barSize={20} />
@@ -151,18 +329,17 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, darkMode }) => {
            </div>
         </div>
 
-        {/* Pie Chart */}
         <div className={`p-6 rounded-xl border ${cardBg}`}>
-          <h3 className={`font-semibold mb-6 ${textColor}`}>Distribuição de Despesas</h3>
-          <div className="h-80">
+          <h3 className={`font-semibold mb-6 ${textColor}`}>Distribuição</h3>
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={categoryData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
+                  innerRadius={50}
+                  outerRadius={70}
                   paddingAngle={5}
                   dataKey="value"
                 >
@@ -170,14 +347,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, darkMode }) => {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
-                   formatter={(value: number) => formatCurrency(value)}
-                   contentStyle={{ 
-                      backgroundColor: darkMode ? '#18181b' : '#fff', 
-                      borderColor: darkMode ? '#27272a' : '#e2e8f0'
-                   }}
-                />
-                <Legend iconType="circle" />
+                <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ backgroundColor: darkMode ? '#18181b' : '#fff', borderColor: darkMode ? '#27272a' : '#e2e8f0' }} />
+                <Legend iconType="circle" wrapperStyle={{fontSize: '11px'}}/>
               </PieChart>
             </ResponsiveContainer>
           </div>

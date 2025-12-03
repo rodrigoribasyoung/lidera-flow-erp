@@ -10,7 +10,7 @@ import {
   X,
   Sun,
   Moon,
-  LogOut
+  Landmark
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -27,6 +27,7 @@ const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme }) => {
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/transactions', icon: ArrowRightLeft, label: 'Lançamentos' },
+    { to: '/accounts', icon: Landmark, label: 'Contas & Caixas' },
     { to: '/reports', icon: PieChart, label: 'Relatórios' },
     { to: '/settings', icon: Settings, label: 'Configurações' },
   ];

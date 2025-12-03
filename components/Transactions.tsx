@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { Plus, Filter, Search, Download, Trash2, Edit2, X } from 'lucide-react';
-import { Transaction, AppSettings, TransactionType, TransactionStatus } from '../types';
+import { Plus, Filter, Search, Download, Trash2, Edit2, X, Upload } from 'lucide-react';
+import { Transaction, AppSettings, TransactionType, TransactionStatus, Account } from '../types';
 
 interface TransactionsProps {
   transactions: Transaction[];
+  accounts: Account[];
   settings: AppSettings;
   darkMode: boolean;
   onAdd: (t: Omit<Transaction, 'id'>) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, t: Partial<Transaction>) => void;
+  onBulkAdd: (transactions: Omit<Transaction, 'id'>[]) => void;
 }
 
 const Transactions: React.FC<TransactionsProps> = ({ 
-  transactions, settings, darkMode, onAdd, onDelete, onUpdate 
+  transactions, accounts, settings, darkMode, onAdd, onDelete, onUpdate, onBulkAdd 
 }) => {
   const [filter, setFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,6 +30,7 @@ const Transactions: React.FC<TransactionsProps> = ({
     produtoServico: '',
     centroCusto: settings.costCenters[0] || '',
     formaPagamento: settings.paymentMethods[0] || '',
+    accountId: accounts[0]?.id || '',
     descricao: '',
     valorPrevisto: 0,
     valorRealizado: 0,
@@ -60,6 +63,7 @@ const Transactions: React.FC<TransactionsProps> = ({
       produtoServico: t.produtoServico,
       centroCusto: t.centroCusto,
       formaPagamento: t.formaPagamento,
+      accountId: t.accountId || accounts[0]?.id || '',
       descricao: t.descricao,
       valorPrevisto: t.valorPrevisto,
       valorRealizado: t.valorRealizado,
@@ -67,6 +71,92 @@ const Transactions: React.FC<TransactionsProps> = ({
       status: t.status
     });
     setIsModalOpen(true);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const csvData = event.target?.result as string;
+      parseCSV(csvData);
+    };
+    reader.readAsText(file);
+    // Reset input
+    e.target.value = '';
+  };
+
+  const parseCSV = (csv: string) => {
+    const lines = csv.split('\n');
+    // Find the header line for transactions (ignoring top metadata if present)
+    const headerIndex = lines.findIndex(line => line.includes('Data Lanç.') || line.includes('Data Venc.'));
+    
+    if (headerIndex === -1) {
+      alert('Formato CSV inválido. Não foi possível encontrar os cabeçalhos das transações.');
+      return;
+    }
+
+    const newTransactions: Omit<Transaction, 'id'>[] = [];
+    
+    // Process only lines after header
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // Handle CSV parsing considering quoted fields with commas
+      const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
+      // Simple split for now since the example is mostly clean, but robust regex preferred for quotes
+      const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+
+      // Mapping based on the provided CSV structure:
+      // 0: Data Lanç., 1: Data Venc., 2: Tipo, 3: Categoria, 4: Entidade, 5: Produto, 6: Centro Custo, 7: Forma Pgto, 8: Descricao, 9: Valor Prev, 10: Valor Real, ...
+      
+      if (cols.length < 10) continue;
+
+      const parseDate = (d: string) => {
+        if (!d) return new Date().toISOString().split('T')[0];
+        const [day, month, year] = d.split('/');
+        return `${year}-${month}-${day}`;
+      };
+
+      const parseMoney = (v: string) => {
+        if (!v) return 0;
+        // Remove . (thousands) and replace , with . (decimal)
+        return parseFloat(v.replace(/\./g, '').replace(',', '.'));
+      };
+
+      try {
+        const trans: Omit<Transaction, 'id'> = {
+          dataLancamento: parseDate(cols[0]),
+          dataVencimento: parseDate(cols[1]),
+          tipo: cols[2] as TransactionType,
+          categoria: cols[3] || 'Geral',
+          entidade: cols[4] || 'Não informado',
+          produtoServico: cols[5] || '',
+          centroCusto: cols[6] || '',
+          formaPagamento: cols[7] || '',
+          descricao: cols[8] || 'Importado via CSV',
+          valorPrevisto: parseMoney(cols[9]),
+          valorRealizado: parseMoney(cols[10]),
+          dataPagamento: cols[11] ? parseDate(cols[11]) : undefined,
+          dataCompetencia: cols[12] ? parseDate(cols[12]) : parseDate(cols[0]),
+          status: cols[13] as TransactionStatus,
+          accountId: accounts[0]?.id // Default to first account
+        };
+        newTransactions.push(trans);
+      } catch (err) {
+        console.error("Error parsing line", i, err);
+      }
+    }
+
+    if (newTransactions.length > 0) {
+      if (window.confirm(`Foram encontradas ${newTransactions.length} transações. Deseja importar?`)) {
+        onBulkAdd(newTransactions);
+      }
+    } else {
+      alert('Nenhuma transação válida encontrada.');
+    }
   };
 
   const filteredData = transactions.filter(t => 
@@ -109,10 +199,20 @@ const Transactions: React.FC<TransactionsProps> = ({
           <p className={subText}>Gerencie suas entradas e saídas</p>
         </div>
         <div className="flex gap-2">
-          <button className={`p-2 px-4 rounded-lg border flex items-center gap-2 ${darkMode ? 'border-zinc-700 text-zinc-300' : 'border-slate-300 text-slate-600'}`}>
-            <Download size={18} />
-            <span className="hidden md:inline">Exportar</span>
-          </button>
+          {/* CSV Upload Button */}
+          <div className="relative">
+            <input 
+              type="file" 
+              accept=".csv"
+              onChange={handleFileUpload}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+            <button className={`h-full p-2 px-4 rounded-lg border flex items-center gap-2 ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+              <Upload size={18} />
+              <span className="hidden md:inline">Importar CSV</span>
+            </button>
+          </div>
+          
           <button 
             onClick={() => {
               setEditingId(null);
@@ -221,6 +321,13 @@ const Transactions: React.FC<TransactionsProps> = ({
                 <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Descrição</label>
                   <input required className={`w-full p-2 rounded border ${inputBg}`} value={formData.descricao} onChange={e => setFormData({...formData, descricao: e.target.value})} />
+                </div>
+
+                <div className="space-y-1">
+                  <label className={`text-xs font-medium ${subText}`}>Conta / Caixa</label>
+                  <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})}>
+                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
                 </div>
 
                 <div className="space-y-1">

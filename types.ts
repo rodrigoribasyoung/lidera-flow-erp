@@ -1,6 +1,14 @@
 export type TransactionType = 'Entrada' | 'Saída';
 export type TransactionStatus = 'Pago' | 'Recebido' | 'A pagar' | 'A receber' | 'Atrasado' | 'Cancelado';
 
+export interface Account {
+  id: string;
+  name: string;
+  type: 'Corrente' | 'Poupança' | 'Caixa' | 'Investimento';
+  initialBalance: number;
+  color: string;
+}
+
 export interface Transaction {
   id: string;
   dataLancamento: string;
@@ -11,6 +19,7 @@ export interface Transaction {
   produtoServico: string;
   centroCusto: string;
   formaPagamento: string;
+  accountId?: string; // Linked bank account
   descricao: string;
   valorPrevisto: number;
   valorRealizado: number;
@@ -32,4 +41,5 @@ export interface DashboardMetrics {
   balance: number;
   pendingIncome: number;
   pendingExpense: number;
+  projectedBalance: number;
 }
