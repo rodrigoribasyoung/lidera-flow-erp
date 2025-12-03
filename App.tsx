@@ -6,6 +6,7 @@ import Transactions from './components/Transactions';
 import Settings from './components/Settings';
 import Reports from './components/Reports';
 import Accounts from './components/Accounts';
+import Help from './components/Help';
 import { Transaction, AppSettings, Account } from './types';
 import { MOCK_TRANSACTIONS, MOCK_SETTINGS, MOCK_ACCOUNTS } from './constants';
 import { transactionService } from './services/firebase';
@@ -150,6 +151,10 @@ const App: React.FC = () => {
                 onUpdateSettings={handleUpdateSettings}
               />
             } 
+          />
+          <Route 
+            path="/help" 
+            element={<Help darkMode={darkMode} />} 
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

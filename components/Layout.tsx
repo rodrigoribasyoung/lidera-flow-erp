@@ -9,7 +9,8 @@ import {
   X,
   Sun,
   Moon,
-  Landmark
+  Landmark,
+  HelpCircle
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -29,6 +30,7 @@ const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme }) => {
     { to: '/accounts', icon: Landmark, label: 'Contas & Caixas' },
     { to: '/reports', icon: PieChart, label: 'Relatórios' },
     { to: '/settings', icon: Settings, label: 'Configurações' },
+    { to: '/help', icon: HelpCircle, label: 'Ajuda' },
   ];
 
   // Theme-based classes
