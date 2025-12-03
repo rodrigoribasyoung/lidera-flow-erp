@@ -12,30 +12,64 @@ interface DashboardProps {
   darkMode: boolean;
 }
 
+type DateRangeOption = 'thisMonth' | 'lastMonth' | 'thisYear' | 'last30' | 'last90' | 'custom';
+
 const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode }) => {
-  // Determine date range from data to set sensible defaults
-  const currentYear = new Date().getFullYear();
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [dateRange, setDateRange] = useState<DateRangeOption>('thisMonth');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<string>('all');
 
-  // Filter transactions based on selection
+  // Helper to determine start/end dates based on selection
+  const { startDate, endDate } = useMemo(() => {
+    const now = new Date();
+    let start = new Date();
+    let end = new Date();
+
+    switch (dateRange) {
+      case 'thisMonth':
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        break;
+      case 'lastMonth':
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      case 'thisYear':
+        start = new Date(now.getFullYear(), 0, 1);
+        end = new Date(now.getFullYear(), 11, 31);
+        break;
+      case 'last30':
+        start = new Date();
+        start.setDate(now.getDate() - 30);
+        break;
+      case 'last90':
+        start = new Date();
+        start.setDate(now.getDate() - 90);
+        break;
+      case 'custom':
+        if (customStart) start = new Date(customStart);
+        if (customEnd) end = new Date(customEnd);
+        // Adjust for end of day
+        end.setHours(23, 59, 59, 999);
+        break;
+    }
+    // Normalize start to beginning of day
+    start.setHours(0,0,0,0);
+    return { startDate: start, endDate: end };
+  }, [dateRange, customStart, customEnd]);
+
+  // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
-      // Robust date parsing
-      const dateParts = t.dataCompetencia.split('-');
-      // Assuming ISO YYYY-MM-DD
-      const tYear = parseInt(dateParts[0]);
-      const tMonth = parseInt(dateParts[1]) - 1; // 0-indexed month
-
-      const monthMatch = tMonth === selectedMonth;
-      const yearMatch = tYear === selectedYear;
+      const tDate = new Date(t.dataCompetencia);
+      const dateMatch = tDate >= startDate && tDate <= endDate;
       const accountMatch = selectedAccount === 'all' || t.accountId === selectedAccount;
-      return monthMatch && yearMatch && accountMatch;
+      return dateMatch && accountMatch;
     });
-  }, [transactions, selectedMonth, selectedYear, selectedAccount]);
+  }, [transactions, startDate, endDate, selectedAccount]);
 
-  // Overall Balance Calculation (Global - Not filtered by date)
+  // Overall Balance (Global)
   const currentTotalBalance = useMemo(() => {
     let total = accounts
       .filter(a => selectedAccount === 'all' || a.id === selectedAccount)
@@ -43,7 +77,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
 
     transactions.forEach(t => {
       if (selectedAccount !== 'all' && t.accountId !== selectedAccount) return;
-      // Calculate balance based on 'Realizado' status
       if (t.status === 'Pago' || t.status === 'Recebido') {
         if (t.tipo === 'Entrada') total += t.valorRealizado;
         else total -= t.valorRealizado;
@@ -91,11 +124,11 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
       .slice(0, 5);
   }, [filteredTransactions]);
 
-  // History Data (Last 6 Months logic)
   const historyData = useMemo(() => {
     const data = [];
-    const today = new Date(); // Use actual date for history endpoint
+    const today = new Date();
     
+    // Last 6 months regardless of filter
     for(let i = 5; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
       const monthName = d.toLocaleString('pt-BR', { month: 'short' });
@@ -123,36 +156,29 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
     return data;
   }, [transactions, selectedAccount]);
 
-  // Cash Flow Projection (Next 30 days)
   const projectionData = useMemo(() => {
     const data = [];
     let runningBalance = currentTotalBalance;
     const today = new Date();
     today.setHours(0,0,0,0);
     
-    // Sort future transactions by date
     const futureTransactions = transactions
       .filter(t => {
-        // Robust date parse for comparison
         const [y, m, d] = t.dataVencimento.split('-').map(Number);
         const tDate = new Date(y, m-1, d);
-
         return tDate >= today && 
                (selectedAccount === 'all' || t.accountId === selectedAccount) &&
                (t.status === 'A pagar' || t.status === 'A receber');
       })
       .sort((a, b) => new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime());
 
-    // Group by day for the next few entries
     data.push({ date: 'Hoje', saldo: runningBalance });
     
     let tempBalance = runningBalance;
-    // Take next 10 relevant transactions for visual simplicity
     futureTransactions.slice(0, 15).forEach(t => {
        if (t.tipo === 'Entrada') tempBalance += t.valorPrevisto;
        else tempBalance -= t.valorPrevisto;
        
-       // Removed unused 'y' variable
        const [, m, d] = t.dataVencimento.split('-');
        const dateLabel = `${d}/${m}`;
        data.push({ date: dateLabel, saldo: tempBalance });
@@ -161,10 +187,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
     return data;
   }, [transactions, currentTotalBalance, selectedAccount]);
 
-  // Colors
+  // Theme constants
   const COLORS = darkMode 
-    ? ['#fbbf24', '#f59e0b', '#d97706', '#b45309', '#78350f'] // Golds
-    : ['#3b82f6', '#06b6d4', '#6366f1', '#8b5cf6', '#ec4899']; // Blues/Cool
+    ? ['#fbbf24', '#f59e0b', '#d97706', '#b45309', '#78350f']
+    : ['#3b82f6', '#06b6d4', '#6366f1', '#8b5cf6', '#ec4899'];
 
   const cardBg = darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm';
   const textColor = darkMode ? 'text-zinc-100' : 'text-slate-800';
@@ -177,44 +203,53 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
   return (
     <div className="space-y-6">
       {/* Filters Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-4">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-4 mb-4">
         <div>
           <h2 className={`text-2xl font-bold ${textColor}`}>Dashboard</h2>
           <p className={subText}>Visão geral da saúde financeira</p>
         </div>
         
         <div className="flex flex-wrap gap-2 items-center">
-           <div className={`flex items-center gap-2 p-2 rounded-lg border ${inputBg}`}>
-              <Calendar size={18} className={subText} />
+           <div className={`flex items-center gap-2 p-1.5 rounded-lg border ${inputBg}`}>
+              <Calendar size={18} className={`ml-2 ${subText}`} />
               <select 
-                value={selectedMonth} 
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="bg-transparent outline-none cursor-pointer"
+                value={dateRange} 
+                onChange={(e) => setDateRange(e.target.value as DateRangeOption)}
+                className="bg-transparent outline-none cursor-pointer text-sm p-1"
               >
-                {Array.from({length: 12}, (_, i) => (
-                  <option key={i} value={i} className={darkMode ? 'bg-zinc-900' : 'bg-white'}>
-                    {new Date(0, i).toLocaleString('pt-BR', { month: 'long' })}
-                  </option>
-                ))}
-              </select>
-              <select 
-                value={selectedYear} 
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="bg-transparent outline-none cursor-pointer"
-              >
-                 {/* Generate year range based on data or static */}
-                 {[currentYear-1, currentYear, currentYear+1].map(y => (
-                    <option key={y} value={y} className={darkMode ? 'bg-zinc-900' : 'bg-white'}>{y}</option>
-                 ))}
+                <option value="thisMonth" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Este Mês</option>
+                <option value="lastMonth" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Mês Passado</option>
+                <option value="thisYear" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Este Ano</option>
+                <option value="last30" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Últimos 30 dias</option>
+                <option value="last90" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Últimos 90 dias</option>
+                <option value="custom" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Personalizado</option>
               </select>
            </div>
 
-           <div className={`flex items-center gap-2 p-2 rounded-lg border ${inputBg}`}>
-              <Filter size={18} className={subText} />
+           {dateRange === 'custom' && (
+             <div className="flex items-center gap-2">
+                <input 
+                  type="date" 
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className={`p-2 rounded-lg border text-sm ${inputBg}`}
+                />
+                <span className={subText}>até</span>
+                <input 
+                  type="date" 
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className={`p-2 rounded-lg border text-sm ${inputBg}`}
+                />
+             </div>
+           )}
+
+           <div className={`flex items-center gap-2 p-1.5 rounded-lg border ${inputBg}`}>
+              <Filter size={18} className={`ml-2 ${subText}`} />
               <select 
                  value={selectedAccount} 
                  onChange={(e) => setSelectedAccount(e.target.value)}
-                 className="bg-transparent outline-none cursor-pointer max-w-[150px]"
+                 className="bg-transparent outline-none cursor-pointer max-w-[150px] text-sm p-1"
               >
                  <option value="all" className={darkMode ? 'bg-zinc-900' : 'bg-white'}>Todas as Contas</option>
                  {accounts.map(a => (
@@ -235,12 +270,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
           <div className={`text-2xl font-bold ${metrics.balance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
             {formatCurrency(metrics.balance)}
           </div>
-          <div className={`text-xs mt-1 ${subText}`}>Considerando todas as contas</div>
+          <div className={`text-xs mt-1 ${subText}`}>Todas contas acumuladas</div>
         </div>
 
         <div className={`p-6 rounded-xl border ${cardBg}`}>
           <div className="flex items-center justify-between mb-4">
-            <span className={subText}>Receitas ({new Date(0, selectedMonth).toLocaleString('pt-BR', {month:'short'})})</span>
+            <span className={subText}>Receitas (Período)</span>
             <ArrowUpCircle className="text-emerald-500" size={20} />
           </div>
           <div className={`text-2xl font-bold ${textColor}`}>
@@ -253,7 +288,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
 
         <div className={`p-6 rounded-xl border ${cardBg}`}>
           <div className="flex items-center justify-between mb-4">
-            <span className={subText}>Despesas ({new Date(0, selectedMonth).toLocaleString('pt-BR', {month:'short'})})</span>
+            <span className={subText}>Despesas (Período)</span>
             <ArrowDownCircle className="text-red-500" size={20} />
           </div>
           <div className={`text-2xl font-bold ${textColor}`}>
@@ -266,18 +301,20 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
 
         <div className={`p-6 rounded-xl border ${cardBg}`}>
           <div className="flex items-center justify-between mb-4">
-            <span className={subText}>Resultado ({new Date(0, selectedMonth).toLocaleString('pt-BR', {month:'short'})})</span>
+            <span className={subText}>Resultado (Período)</span>
             <DollarSign className={darkMode ? 'text-yellow-500' : 'text-blue-500'} size={20} />
           </div>
           <div className={`text-2xl font-bold ${metrics.periodBalance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
             {formatCurrency(metrics.periodBalance)}
+          </div>
+          <div className={`text-xs mt-1 ${subText}`}>
+             Receitas - Despesas (Realizado)
           </div>
         </div>
       </div>
 
       {/* Charts Row 1: History & Projection */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* History Chart */}
         <div className={`p-6 rounded-xl border ${cardBg}`}>
            <h3 className={`font-semibold mb-6 ${textColor}`}>Histórico Semestral (Realizado)</h3>
            <div className="h-64">
@@ -298,9 +335,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
            </div>
         </div>
 
-        {/* Projection Chart */}
         <div className={`p-6 rounded-xl border ${cardBg}`}>
-           <h3 className={`font-semibold mb-6 ${textColor}`}>Projeção de Fluxo de Caixa (Próximos dias)</h3>
+           <h3 className={`font-semibold mb-6 ${textColor}`}>Projeção de Fluxo de Caixa</h3>
            <div className="h-64">
              <ResponsiveContainer width="100%" height="100%">
                <LineChart data={projectionData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
@@ -321,7 +357,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
       {/* Charts Row 2: Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className={`lg:col-span-2 p-6 rounded-xl border ${cardBg}`}>
-           <h3 className={`font-semibold mb-6 ${textColor}`}>Top Categorias de Despesa ({new Date(selectedYear, selectedMonth).toLocaleString('pt-BR', {month:'long'})})</h3>
+           <h3 className={`font-semibold mb-6 ${textColor}`}>Top Categorias de Despesa (Período Selecionado)</h3>
            {categoryData.length > 0 ? (
            <div className="h-64">
              <ResponsiveContainer width="100%" height="100%">
