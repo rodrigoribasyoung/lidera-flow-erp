@@ -152,7 +152,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
        if (t.tipo === 'Entrada') tempBalance += t.valorPrevisto;
        else tempBalance -= t.valorPrevisto;
        
-       const [y, m, d] = t.dataVencimento.split('-');
+       // Removed unused 'y' variable
+       const [, m, d] = t.dataVencimento.split('-');
        const dateLabel = `${d}/${m}`;
        data.push({ date: dateLabel, saldo: tempBalance });
     });

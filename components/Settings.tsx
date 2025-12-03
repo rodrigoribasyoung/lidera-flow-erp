@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppSettings, CategoryItem, EntityItem } from '../types';
+import { AppSettings } from '../types';
 import { Plus, Trash2, Edit2, X, Check } from 'lucide-react';
 
 interface SettingsProps {
