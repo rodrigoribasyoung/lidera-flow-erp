@@ -137,10 +137,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
         const tDate = new Date(t.accrualDate);
         return tDate.getMonth() === d.getMonth() && 
                tDate.getFullYear() === d.getFullYear() && 
-               t.tipo === 'Entrada' && 
+               t.type === 'Entrada' && 
                (selectedAccount === 'all' || t.accountId === selectedAccount) &&
                (t.status === 'Recebido' || t.status === 'Pago');
-      }).reduce((acc, t) => acc + t.valorRealizado, 0);
+      }).reduce((acc, t) => acc + t.actualAmount, 0);
 
       const expense = transactions.filter(t => {
         const tDate = new Date(t.accrualDate);
@@ -164,22 +164,22 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
     
     const futureTransactions = transactions
       .filter(t => {
-        const [y, m, d] = t.dataVencimento.split('-').map(Number);
+        const [y, m, d] = t.dueDate.split('-').map(Number);
         const tDate = new Date(y, m-1, d);
         return tDate >= today && 
                (selectedAccount === 'all' || t.accountId === selectedAccount) &&
                (t.status === 'A pagar' || t.status === 'A receber');
       })
-      .sort((a, b) => new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime());
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
     data.push({ date: 'Hoje', saldo: runningBalance });
     
     let tempBalance = runningBalance;
     futureTransactions.slice(0, 15).forEach(t => {
-       if (t.tipo === 'Entrada') tempBalance += t.valorPrevisto;
-       else tempBalance -= t.valorPrevisto;
+       if (t.type === 'Entrada') tempBalance += t.expectedAmount;
+       else tempBalance -= t.expectedAmount;
        
-       const [, m, d] = t.dataVencimento.split('-');
+       const [, m, d] = t.dueDate.split('-');
        const dateLabel = `${d}/${m}`;
        data.push({ date: dateLabel, saldo: tempBalance });
     });

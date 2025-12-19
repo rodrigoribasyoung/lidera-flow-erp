@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Upload, X, Download, FileSpreadsheet, CheckCircle, AlertCircle } from 'lucide-react';
 import { Transaction, TransactionType, TransactionStatus } from '../types';
 
