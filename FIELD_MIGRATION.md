@@ -58,3 +58,4 @@ Este documento descreve a padronização de campos para um padrão universal (in
 - ✅ Melhor para colaboração com desenvolvedores internacionais
 - ✅ Nomes mais descritivos e profissionais
 
+

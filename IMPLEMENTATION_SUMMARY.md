@@ -108,3 +108,4 @@
 - **Logo**: Usa arquivo local da pasta `public`
 - **Edição**: Contas podem ser editadas sem precisar deletar e criar novamente
 
+

@@ -4,11 +4,15 @@ import {
   PieChart, Pie, Cell, Legend, LineChart, Line, AreaChart, Area, ReferenceLine, ComposedChart
 } from 'recharts';
 import { ArrowUpCircle, ArrowDownCircle, DollarSign, Wallet, Calendar, Filter, TrendingUp, TrendingDown, AlertTriangle, Activity } from 'lucide-react';
-import { Transaction, Account } from '../types';
+import { Transaction, Account, Budget, CategoryItem, SubcategoryItem } from '../types';
+import BudgetVsActual from './BudgetVsActual';
 
 interface DashboardProps {
   transactions: Transaction[];
   accounts: Account[];
+  budgets?: Budget[];
+  categories?: CategoryItem[];
+  subcategories?: SubcategoryItem[];
   darkMode: boolean;
 }
 
@@ -16,7 +20,7 @@ type DateRangeOption = 'thisMonth' | 'lastMonth' | 'thisYear' | 'last30' | 'last
 
 type DashboardTab = 'overview' | 'cashflow' | 'expenses' | 'revenue' | 'budget';
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, budgets = [], categories = [], subcategories = [], darkMode }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [dateRange, setDateRange] = useState<DateRangeOption>('thisMonth');
   const [customStart, setCustomStart] = useState('');
@@ -1079,34 +1083,374 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
         </div>
       )}
 
-      {activeTab === 'expenses' && (
-        <div className="space-y-6">
-          {/* TODO: Move expense related visualizations here */}
-          <div className={`p-6 rounded-xl border ${cardBg}`}>
-            <h3 className={`font-semibold mb-4 ${textColor}`}>Despesas</h3>
-            <p className={subText}>Visualizações de despesas serão organizadas aqui.</p>
-          </div>
-        </div>
-      )}
+      {activeTab === 'expenses' && (() => {
+        const totalExpenses = expenseBySubcategory.reduce((sum, item) => sum + item.total, 0);
 
-      {activeTab === 'revenue' && (
-        <div className="space-y-6">
-          {/* TODO: Move revenue related visualizations here */}
-          <div className={`p-6 rounded-xl border ${cardBg}`}>
-            <h3 className={`font-semibold mb-4 ${textColor}`}>Receitas</h3>
-            <p className={subText}>Visualizações de receitas serão organizadas aqui.</p>
+        return (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <span className={subText}>Total de Despesas</span>
+                  <ArrowDownCircle className="text-red-500" size={20} />
+                </div>
+                <div className={`text-2xl font-bold ${textColor}`}>
+                  {formatCurrency(totalExpenses)}
+                </div>
+                <div className={`text-xs mt-1 ${subText}`}>
+                  {expenseBySubcategory.length} {expenseBySubcategory.length === 1 ? 'categoria/subcategoria' : 'categorias/subcategorias'}
+                </div>
+              </div>
+
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <span className={subText}>Maior Despesa</span>
+                  <AlertTriangle className="text-red-500" size={20} />
+                </div>
+                <div className={`text-xl font-bold ${textColor} mb-1`}>
+                  {expenseBySubcategory.length > 0 
+                    ? `${expenseBySubcategory[0].categoryName} - ${expenseBySubcategory[0].subcategoryName}`
+                    : '-'
+                  }
+                </div>
+                <div className={`text-lg ${textColor}`}>
+                  {expenseBySubcategory.length > 0 
+                    ? formatCurrency(expenseBySubcategory[0].total)
+                    : formatCurrency(0)
+                  }
+                </div>
+              </div>
+
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <span className={subText}>Média por Item</span>
+                  <DollarSign className={subText} size={20} />
+                </div>
+                <div className={`text-2xl font-bold ${textColor}`}>
+                  {formatCurrency(
+                    expenseBySubcategory.length > 0 
+                      ? totalExpenses / expenseBySubcategory.reduce((sum, item) => sum + item.count, 0)
+                      : 0
+                  )}
+                </div>
+                <div className={`text-xs mt-1 ${subText}`}>
+                  {expenseBySubcategory.reduce((sum, item) => sum + item.count, 0)} transações
+                </div>
+              </div>
+            </div>
+
+            {/* Pie Chart - Expenses by Subcategory */}
+            {expenseBySubcategory.length > 0 && (
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <h3 className={`font-semibold mb-6 ${textColor}`}>Distribuição por Subcategoria</h3>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={expenseBySubcategory.slice(0, 10).map(item => ({
+                          name: `${item.categoryName} - ${item.subcategoryName}`,
+                          value: item.total,
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name.substring(0, 20)}${name.length > 20 ? '...' : ''} (${(percent * 100).toFixed(0)}%)`}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {expenseBySubcategory.slice(0, 10).map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: darkMode ? '#27272a' : '#ffffff',
+                          border: darkMode ? '1px solid #3f3f46' : '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                        }}
+                        formatter={(value: number) => formatCurrency(value)}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Bar Chart - Top Subcategories */}
+            {expenseBySubcategory.length > 0 && (
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <h3 className={`font-semibold mb-6 ${textColor}`}>Top 10 Subcategorias</h3>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={expenseBySubcategory.slice(0, 10).map(item => ({
+                      name: `${item.categoryName} - ${item.subcategoryName}`,
+                      value: item.total,
+                    }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#52525b' : '#e2e8f0'} />
+                      <XAxis 
+                        dataKey="name" 
+                        angle={-45}
+                        textAnchor="end"
+                        height={120}
+                        tick={{ fill: darkMode ? '#a1a1aa' : '#64748b', fontSize: 11 }}
+                      />
+                      <YAxis 
+                        tick={{ fill: darkMode ? '#a1a1aa' : '#64748b' }}
+                        tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
+                      />
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: darkMode ? '#27272a' : '#ffffff',
+                          border: darkMode ? '1px solid #3f3f46' : '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                        }}
+                        formatter={(value: number) => formatCurrency(value)}
+                      />
+                      <Bar dataKey="value" fill={darkMode ? '#ef4444' : '#dc2626'} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Detailed Table */}
+            <div className={`p-6 rounded-xl border ${cardBg}`}>
+              <h3 className={`font-semibold mb-4 ${textColor}`}>Detalhamento por Subcategoria</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className={`border-b ${darkMode ? 'border-zinc-700' : 'border-slate-200'}`}>
+                      <th className={`text-left py-3 px-4 ${subText} text-sm font-medium`}>Categoria</th>
+                      <th className={`text-left py-3 px-4 ${subText} text-sm font-medium`}>Subcategoria</th>
+                      <th className={`text-right py-3 px-4 ${subText} text-sm font-medium`}>Total</th>
+                      <th className={`text-right py-3 px-4 ${subText} text-sm font-medium`}>Transações</th>
+                      <th className={`text-right py-3 px-4 ${subText} text-sm font-medium`}>% do Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expenseBySubcategory.map((item, index) => (
+                      <tr key={`${item.categoryId}_${item.subcategoryId || 'none'}`} className={`border-b ${darkMode ? 'border-zinc-800' : 'border-slate-100'}`}>
+                        <td className={`py-3 px-4 ${textColor} font-medium`}>{item.categoryName}</td>
+                        <td className={`py-3 px-4 ${textColor}`}>{item.subcategoryName}</td>
+                        <td className={`py-3 px-4 text-right ${textColor} font-semibold`}>
+                          {formatCurrency(item.total)}
+                        </td>
+                        <td className={`py-3 px-4 text-right ${subText}`}>{item.count}</td>
+                        <td className={`py-3 px-4 text-right ${subText}`}>
+                          {totalExpenses > 0 ? ((item.total / totalExpenses) * 100).toFixed(1) : 0}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className={`border-t-2 ${darkMode ? 'border-zinc-600' : 'border-slate-300'} font-semibold`}>
+                      <td colSpan={2} className={`py-3 px-4 ${textColor}`}>Total</td>
+                      <td className={`py-3 px-4 text-right ${textColor}`}>
+                        {formatCurrency(totalExpenses)}
+                      </td>
+                      <td className={`py-3 px-4 text-right ${textColor}`}>
+                        {expenseBySubcategory.reduce((sum, item) => sum + item.count, 0)}
+                      </td>
+                      <td className={`py-3 px-4 text-right ${textColor}`}>100%</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {activeTab === 'revenue' && (() => {
+        const totalRevenue = revenueBySubcategory.reduce((sum, item) => sum + item.total, 0);
+
+        return (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <span className={subText}>Total de Receitas</span>
+                  <ArrowUpCircle className="text-green-500" size={20} />
+                </div>
+                <div className={`text-2xl font-bold ${textColor}`}>
+                  {formatCurrency(totalRevenue)}
+                </div>
+                <div className={`text-xs mt-1 ${subText}`}>
+                  {revenueBySubcategory.length} {revenueBySubcategory.length === 1 ? 'categoria/subcategoria' : 'categorias/subcategorias'}
+                </div>
+              </div>
+
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <span className={subText}>Maior Receita</span>
+                  <TrendingUp className="text-green-500" size={20} />
+                </div>
+                <div className={`text-xl font-bold ${textColor} mb-1`}>
+                  {revenueBySubcategory.length > 0 
+                    ? `${revenueBySubcategory[0].categoryName} - ${revenueBySubcategory[0].subcategoryName}`
+                    : '-'
+                  }
+                </div>
+                <div className={`text-lg ${textColor}`}>
+                  {revenueBySubcategory.length > 0 
+                    ? formatCurrency(revenueBySubcategory[0].total)
+                    : formatCurrency(0)
+                  }
+                </div>
+              </div>
+
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <span className={subText}>Média por Item</span>
+                  <DollarSign className={subText} size={20} />
+                </div>
+                <div className={`text-2xl font-bold ${textColor}`}>
+                  {formatCurrency(
+                    revenueBySubcategory.length > 0 
+                      ? totalRevenue / revenueBySubcategory.reduce((sum, item) => sum + item.count, 0)
+                      : 0
+                  )}
+                </div>
+                <div className={`text-xs mt-1 ${subText}`}>
+                  {revenueBySubcategory.reduce((sum, item) => sum + item.count, 0)} transações
+                </div>
+              </div>
+            </div>
+
+            {/* Pie Chart - Revenue by Subcategory */}
+            {revenueBySubcategory.length > 0 && (
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <h3 className={`font-semibold mb-6 ${textColor}`}>Distribuição por Subcategoria</h3>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={revenueBySubcategory.slice(0, 10).map(item => ({
+                          name: `${item.categoryName} - ${item.subcategoryName}`,
+                          value: item.total,
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name.substring(0, 20)}${name.length > 20 ? '...' : ''} (${(percent * 100).toFixed(0)}%)`}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {revenueBySubcategory.slice(0, 10).map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: darkMode ? '#27272a' : '#ffffff',
+                          border: darkMode ? '1px solid #3f3f46' : '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                        }}
+                        formatter={(value: number) => formatCurrency(value)}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Bar Chart - Top Subcategories */}
+            {revenueBySubcategory.length > 0 && (
+              <div className={`p-6 rounded-xl border ${cardBg}`}>
+                <h3 className={`font-semibold mb-6 ${textColor}`}>Top 10 Subcategorias</h3>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={revenueBySubcategory.slice(0, 10).map(item => ({
+                      name: `${item.categoryName} - ${item.subcategoryName}`,
+                      value: item.total,
+                    }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#52525b' : '#e2e8f0'} />
+                      <XAxis 
+                        dataKey="name" 
+                        angle={-45}
+                        textAnchor="end"
+                        height={120}
+                        tick={{ fill: darkMode ? '#a1a1aa' : '#64748b', fontSize: 11 }}
+                      />
+                      <YAxis 
+                        tick={{ fill: darkMode ? '#a1a1aa' : '#64748b' }}
+                        tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
+                      />
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: darkMode ? '#27272a' : '#ffffff',
+                          border: darkMode ? '1px solid #3f3f46' : '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                        }}
+                        formatter={(value: number) => formatCurrency(value)}
+                      />
+                      <Bar dataKey="value" fill={darkMode ? '#10b981' : '#059669'} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Detailed Table */}
+            <div className={`p-6 rounded-xl border ${cardBg}`}>
+              <h3 className={`font-semibold mb-4 ${textColor}`}>Detalhamento por Subcategoria</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className={`border-b ${darkMode ? 'border-zinc-700' : 'border-slate-200'}`}>
+                      <th className={`text-left py-3 px-4 ${subText} text-sm font-medium`}>Categoria</th>
+                      <th className={`text-left py-3 px-4 ${subText} text-sm font-medium`}>Subcategoria</th>
+                      <th className={`text-right py-3 px-4 ${subText} text-sm font-medium`}>Total</th>
+                      <th className={`text-right py-3 px-4 ${subText} text-sm font-medium`}>Transações</th>
+                      <th className={`text-right py-3 px-4 ${subText} text-sm font-medium`}>% do Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {revenueBySubcategory.map((item, index) => (
+                      <tr key={`${item.categoryId}_${item.subcategoryId || 'none'}`} className={`border-b ${darkMode ? 'border-zinc-800' : 'border-slate-100'}`}>
+                        <td className={`py-3 px-4 ${textColor} font-medium`}>{item.categoryName}</td>
+                        <td className={`py-3 px-4 ${textColor}`}>{item.subcategoryName}</td>
+                        <td className={`py-3 px-4 text-right ${textColor} font-semibold`}>
+                          {formatCurrency(item.total)}
+                        </td>
+                        <td className={`py-3 px-4 text-right ${subText}`}>{item.count}</td>
+                        <td className={`py-3 px-4 text-right ${subText}`}>
+                          {totalRevenue > 0 ? ((item.total / totalRevenue) * 100).toFixed(1) : 0}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className={`border-t-2 ${darkMode ? 'border-zinc-600' : 'border-slate-300'} font-semibold`}>
+                      <td colSpan={2} className={`py-3 px-4 ${textColor}`}>Total</td>
+                      <td className={`py-3 px-4 text-right ${textColor}`}>
+                        {formatCurrency(totalRevenue)}
+                      </td>
+                      <td className={`py-3 px-4 text-right ${textColor}`}>
+                        {revenueBySubcategory.reduce((sum, item) => sum + item.count, 0)}
+                      </td>
+                      <td className={`py-3 px-4 text-right ${textColor}`}>100%</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {activeTab === 'budget' && (
-        <div className="space-y-6">
-          {/* TODO: Add budget vs actual report here */}
-          <div className={`p-6 rounded-xl border ${cardBg}`}>
-            <h3 className={`font-semibold mb-4 ${textColor}`}>Orçado vs Realizado</h3>
-            <p className={subText}>Relatório de orçado vs realizado será implementado aqui.</p>
-          </div>
-        </div>
+        <BudgetVsActual
+          budgets={budgets}
+          transactions={transactions}
+          categories={categories}
+          subcategories={subcategories}
+          darkMode={darkMode}
+        />
       )}
     </div>
   );

@@ -12,7 +12,8 @@ import {
   Landmark,
   HelpCircle,
   LogOut,
-  Users
+  Users,
+  DollarSign
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -35,6 +36,7 @@ const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme, user, 
     { to: '/entities', icon: Users, label: 'Fornecedores & Clientes' },
     { to: '/reports', icon: PieChart, label: 'Relatórios' },
     { to: '/cashflow-report', icon: ArrowRightLeft, label: 'Fluxo de Caixa' },
+    { to: '/budget', icon: DollarSign, label: 'Orçamento' },
     { to: '/settings', icon: Settings, label: 'Configurações' },
     { to: '/help', icon: HelpCircle, label: 'Ajuda' },
   ];

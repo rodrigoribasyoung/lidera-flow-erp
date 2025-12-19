@@ -8,11 +8,12 @@ import Reports from './components/Reports';
 import Accounts from './components/Accounts';
 import Help from './components/Help';
 import Login from './components/Login';
-import { Transaction, AppSettings, Account, Entity, SubcategoryItem } from './types';
+import { Transaction, AppSettings, Account, Entity, SubcategoryItem, Budget } from './types';
 import { MOCK_TRANSACTIONS, MOCK_SETTINGS, MOCK_ACCOUNTS } from './constants';
-import { transactionService, settingsService, accountsService, entityService, authService, subcategoryService } from './services/firebase';
+import { transactionService, settingsService, accountsService, entityService, authService, subcategoryService, budgetService } from './services/firebase';
 import Entities from './components/Entities';
 import CashFlowReport from './components/CashFlowReport';
+import BudgetComponent from './components/Budget';
 import { User } from 'firebase/auth';
 
 const App: React.FC = () => {
@@ -30,6 +31,7 @@ const App: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [subcategories, setSubcategories] = useState<SubcategoryItem[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
   const [loading, setLoading] = useState(true);
 
@@ -57,12 +59,13 @@ const App: React.FC = () => {
     const fetchAllData = async () => {
       try {
         // Fetch all data from Firebase in parallel
-        const [firebaseTransactions, firebaseSettings, firebaseAccounts, firebaseEntities, firebaseSubcategories] = await Promise.all([
+        const [firebaseTransactions, firebaseSettings, firebaseAccounts, firebaseEntities, firebaseSubcategories, firebaseBudgets] = await Promise.all([
           transactionService.getAll(),
           settingsService.get(),
           accountsService.getAll(),
           entityService.getAll(),
-          subcategoryService.getAll()
+          subcategoryService.getAll(),
+          budgetService.getAll()
         ]);
 
         // Set transactions
@@ -145,6 +148,9 @@ const App: React.FC = () => {
 
         // Set subcategories
         setSubcategories(firebaseSubcategories);
+        
+        // Set budgets
+        setBudgets(firebaseBudgets);
       } catch (error) {
         console.error("Error fetching data from Firebase:", error);
         // Fallback to mock data on error
@@ -156,8 +162,10 @@ const App: React.FC = () => {
       }
     };
 
-    fetchAllData();
-  }, []);
+    if (user) {
+      fetchAllData();
+    }
+  }, [user]);
 
   // Migration helper: Convert category (string) to categoryId
   // Note: Uncomment and call manually if migration is needed
@@ -622,6 +630,55 @@ const App: React.FC = () => {
     }
   };
 
+  // Budget Handlers
+  const handleAddBudget = async (budget: Omit<Budget, 'id'>) => {
+    try {
+      const docRef = await budgetService.add(budget);
+      const newBudget: Budget = { id: docRef.id, ...budget };
+      setBudgets([...budgets, newBudget]);
+    } catch (error: any) {
+      console.error("Error adding budget to Firebase:", error);
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        alert("⚠️ ERRO: Permissão negada pelo Firestore.\n\nConfigure as regras de segurança no console do Firebase.");
+      } else {
+        alert("Erro ao adicionar orçamento no Firebase.");
+      }
+      throw error;
+    }
+  };
+
+  const handleUpdateBudget = async (id: string, updated: Partial<Budget>) => {
+    try {
+      await budgetService.update(id, updated);
+      setBudgets(budgets.map(b => b.id === id ? { ...b, ...updated } : b));
+    } catch (error: any) {
+      console.error("Error updating budget in Firebase:", error);
+      setBudgets(budgets.map(b => b.id === id ? { ...b, ...updated } : b));
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        console.warn("⚠️ Permissão negada - Configure as regras do Firestore");
+      } else {
+        alert("Erro ao atualizar orçamento no Firebase.");
+      }
+      throw error;
+    }
+  };
+
+  const handleDeleteBudget = async (id: string) => {
+    try {
+      await budgetService.delete(id);
+      setBudgets(budgets.filter(b => b.id !== id));
+    } catch (error: any) {
+      console.error("Error deleting budget from Firebase:", error);
+      setBudgets(budgets.filter(b => b.id !== id));
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        console.warn("⚠️ Permissão negada - Configure as regras do Firestore");
+      } else {
+        alert("Erro ao deletar orçamento no Firebase.");
+      }
+      throw error;
+    }
+  };
+
   // Show loading while checking auth
   if (authLoading || loading) {
     return (
@@ -645,7 +702,10 @@ const App: React.FC = () => {
             element={
               <Dashboard 
                 transactions={transactions} 
-                accounts={accounts} 
+                accounts={accounts}
+                budgets={budgets}
+                categories={settings.categories}
+                subcategories={subcategories}
                 darkMode={darkMode} 
               />
             } 
@@ -655,7 +715,10 @@ const App: React.FC = () => {
             element={
               <Dashboard 
                 transactions={transactions} 
-                accounts={accounts} 
+                accounts={accounts}
+                budgets={budgets}
+                categories={settings.categories}
+                subcategories={subcategories}
                 darkMode={darkMode} 
               />
             } 
@@ -805,6 +868,36 @@ const App: React.FC = () => {
                 onDeleteSubcategory={handleDeleteSubcategory}
               />
             } 
+          />
+          <Route 
+            path="/budget" 
+            element={
+              <BudgetComponent
+                budgets={budgets}
+                categories={settings.categories}
+                subcategories={subcategories}
+                darkMode={darkMode}
+                currentUserId={user?.uid || ''}
+                onAddBudget={handleAddBudget}
+                onUpdateBudget={handleUpdateBudget}
+                onDeleteBudget={handleDeleteBudget}
+              />
+            }
+          />
+          <Route 
+            path="/orcamento" 
+            element={
+              <BudgetComponent
+                budgets={budgets}
+                categories={settings.categories}
+                subcategories={subcategories}
+                darkMode={darkMode}
+                currentUserId={user?.uid || ''}
+                onAddBudget={handleAddBudget}
+                onUpdateBudget={handleUpdateBudget}
+                onDeleteBudget={handleDeleteBudget}
+              />
+            }
           />
           <Route 
             path="/help" 
