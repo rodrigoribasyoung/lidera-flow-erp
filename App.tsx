@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import Transactions from './components/Transactions';
@@ -7,15 +7,21 @@ import Settings from './components/Settings';
 import Reports from './components/Reports';
 import Accounts from './components/Accounts';
 import Help from './components/Help';
+import Login from './components/Login';
 import { Transaction, AppSettings, Account } from './types';
 import { MOCK_TRANSACTIONS, MOCK_SETTINGS, MOCK_ACCOUNTS } from './constants';
-import { transactionService, settingsService, accountsService } from './services/firebase';
+import { transactionService, settingsService, accountsService, authService } from './services/firebase';
+import { User } from 'firebase/auth';
 
 const App: React.FC = () => {
   // Theme State
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
   });
+
+  // Auth State
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -33,6 +39,15 @@ const App: React.FC = () => {
       localStorage.setItem('theme', 'light');
     }
   }, [darkMode]);
+
+  // Auth State Listener
+  useEffect(() => {
+    const unsubscribe = authService.onAuthStateChanged((user) => {
+      setUser(user);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -231,6 +246,25 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateAccount = async (id: string, updated: Partial<Account>) => {
+    try {
+      // Update in Firebase
+      await accountsService.update(id, updated);
+      // Update local state
+      setAccounts(accounts.map(a => a.id === id ? { ...a, ...updated } : a));
+    } catch (error: any) {
+      console.error("Error updating account in Firebase:", error);
+      // Still update local state for better UX
+      setAccounts(accounts.map(a => a.id === id ? { ...a, ...updated } : a));
+      
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        console.warn("⚠️ Permissão negada - Configure as regras do Firestore");
+      } else {
+        alert("Erro ao atualizar conta no Firebase. A conta foi atualizada localmente.");
+      }
+    }
+  };
+
   const handleDeleteAccount = async (id: string) => {
     try {
       // Delete from Firebase
@@ -250,7 +284,8 @@ const App: React.FC = () => {
     }
   };
 
-  if (loading) {
+  // Show loading while checking auth
+  if (authLoading || loading) {
     return (
       <div className={`h-screen w-full flex items-center justify-center ${darkMode ? 'bg-zinc-950 text-yellow-500' : 'bg-slate-50 text-blue-600'}`}>
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-current"></div>
@@ -258,12 +293,27 @@ const App: React.FC = () => {
     );
   }
 
+  // Show login if not authenticated
+  if (!user) {
+    return <Login darkMode={darkMode} />;
+  }
+
   return (
     <Router>
-      <Layout darkMode={darkMode} toggleTheme={toggleTheme}>
+      <Layout darkMode={darkMode} toggleTheme={toggleTheme} user={user} onSignOut={() => authService.signOut()}>
         <Routes>
           <Route 
             path="/" 
+            element={
+              <Dashboard 
+                transactions={transactions} 
+                accounts={accounts} 
+                darkMode={darkMode} 
+              />
+            } 
+          />
+          <Route 
+            path="/dashboard" 
             element={
               <Dashboard 
                 transactions={transactions} 
@@ -288,6 +338,21 @@ const App: React.FC = () => {
             } 
           />
           <Route 
+            path="/lancamentos" 
+            element={
+              <Transactions 
+                transactions={transactions} 
+                accounts={accounts}
+                settings={settings}
+                darkMode={darkMode}
+                onAdd={handleAddTransaction}
+                onDelete={handleDeleteTransaction}
+                onUpdate={handleUpdateTransaction}
+                onBulkAdd={handleBulkAddTransactions}
+              />
+            } 
+          />
+          <Route 
             path="/accounts" 
             element={
               <Accounts 
@@ -295,12 +360,30 @@ const App: React.FC = () => {
                  transactions={transactions}
                  darkMode={darkMode}
                  onAddAccount={handleAddAccount}
+                 onUpdateAccount={handleUpdateAccount}
+                 onDeleteAccount={handleDeleteAccount}
+              />
+            }
+          />
+          <Route 
+            path="/contas" 
+            element={
+              <Accounts 
+                 accounts={accounts} 
+                 transactions={transactions}
+                 darkMode={darkMode}
+                 onAddAccount={handleAddAccount}
+                 onUpdateAccount={handleUpdateAccount}
                  onDeleteAccount={handleDeleteAccount}
               />
             }
           />
           <Route 
             path="/reports"
+            element={<Reports transactions={transactions} darkMode={darkMode} />}
+          />
+          <Route 
+            path="/relatorios"
             element={<Reports transactions={transactions} darkMode={darkMode} />}
           />
           <Route 
@@ -314,7 +397,21 @@ const App: React.FC = () => {
             } 
           />
           <Route 
+            path="/configuracoes" 
+            element={
+              <Settings 
+                settings={settings} 
+                darkMode={darkMode}
+                onUpdateSettings={handleUpdateSettings}
+              />
+            } 
+          />
+          <Route 
             path="/help" 
+            element={<Help darkMode={darkMode} />} 
+          />
+          <Route 
+            path="/ajuda" 
             element={<Help darkMode={darkMode} />} 
           />
           <Route path="*" element={<Navigate to="/" replace />} />

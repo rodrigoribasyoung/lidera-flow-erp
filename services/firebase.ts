@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc } from "firebase/firestore";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { Transaction, AppSettings, Account } from "../types";
 
 const firebaseConfig = {
@@ -13,6 +14,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
 
 // Collection References
 export const TRANSACTIONS_COLLECTION = "transactions";
@@ -154,5 +157,32 @@ export const accountsService = {
       }
       throw error;
     }
+  }
+};
+
+// Auth Service
+export const authService = {
+  signInWithGoogle: async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      return result.user;
+    } catch (error: any) {
+      console.error("Error signing in with Google:", error);
+      throw error;
+    }
+  },
+  signOut: async () => {
+    try {
+      await signOut(auth);
+    } catch (error: any) {
+      console.error("Error signing out:", error);
+      throw error;
+    }
+  },
+  onAuthStateChanged: (callback: (user: User | null) => void) => {
+    return onAuthStateChanged(auth, callback);
+  },
+  getCurrentUser: () => {
+    return auth.currentUser;
   }
 };
