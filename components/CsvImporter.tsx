@@ -201,11 +201,6 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
   const processCsvImport = async () => {
     if (isImporting) return; // Prevent double-click
     
-    // #region agent log
-    console.log('🔍 DEBUG: processCsvImport START', { allCsvRowsLength: allCsvRows.length, fieldMappingKeys: Object.keys(fieldMapping).length, fieldMapping });
-    fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:201',message:'processCsvImport START',data:{allCsvRowsLength:allCsvRows.length,fieldMappingKeys:Object.keys(fieldMapping).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    
     setIsImporting(true);
     setImportProgress({ current: 0, total: allCsvRows.length, message: 'Processando CSV...' });
     
@@ -286,10 +281,6 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
       const entityName = getCol('entity') || 'Não informado';
 
       if (!description || expectedAmount === 0) {
-        // #region agent log
-        console.log('🔍 DEBUG: Row validation failed', { rowIndex: rowIndex + 2, description, expectedAmount, hasDescription: !!description });
-        fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:283',message:'Row validation failed',data:{rowIndex:rowIndex+2,description,expectedAmount,hasDescription:!!description},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
         errors.push(`Linha ${rowIndex + 2}: Descrição ou valor inválido`);
         continue; // Skip this row, don't exit the function
       }
@@ -356,12 +347,6 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
       }
 
       newTransactions.push(transaction);
-      // #region agent log
-      if (rowIndex % 50 === 0 || rowIndex === allCsvRows.length - 1) {
-        console.log('🔍 DEBUG: Transaction added', { rowIndex: rowIndex + 1, totalRows: allCsvRows.length, newTransactionsCount: newTransactions.length, transactionDescription: transaction.description });
-        fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:349',message:'Transaction added to array',data:{rowIndex:rowIndex+1,totalRows:allCsvRows.length,newTransactionsCount:newTransactions.length,transactionDescription:transaction.description},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      }
-      // #endregion
     }
 
     // Process entities
@@ -406,17 +391,7 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
       }
     }
 
-    // #region agent log
-    console.log('🔍 DEBUG: After processing loop', { newTransactionsLength: newTransactions.length, errorsLength: errors.length, skippedCount, updatedCount, entityMapSize: entityMap.size });
-    fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:394',message:'After processing loop',data:{newTransactionsLength:newTransactions.length,errorsLength:errors.length,skippedCount,updatedCount,entityMapSize:entityMap.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
-    // #endregion
-    
     setImportErrors(errors);
-
-    // #region agent log
-    console.log('🔍 DEBUG: Checking save condition', { errorsLength: errors.length, newTransactionsLength: newTransactions.length, conditionMet: newTransactions.length > 0 });
-    fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:398',message:'Checking save condition',data:{errorsLength:errors.length,newTransactionsLength:newTransactions.length,conditionMet:newTransactions.length > 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
 
     // Save transactions if there are any valid ones, even if there are some errors
     if (newTransactions.length > 0) {
@@ -427,21 +402,9 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
       });
       
       try {
-        // #region agent log
-        console.log('🔍 DEBUG: Calling onImport', { newTransactionsLength: newTransactions.length, firstTransaction: newTransactions[0]?.description });
-        fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:405',message:'Calling onImport',data:{newTransactionsLength:newTransactions.length,firstTransaction:newTransactions[0]?.description},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         const result = onImport(newTransactions);
-        // #region agent log
-        console.log('🔍 DEBUG: onImport called', { isPromise: result instanceof Promise });
-        fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:407',message:'onImport called',data:{isPromise:result instanceof Promise},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         if (result instanceof Promise) {
           await result;
-          // #region agent log
-          console.log('🔍 DEBUG: onImport promise resolved');
-          fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:410',message:'onImport promise resolved',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
         }
         
         setIsImporting(false);
@@ -455,10 +418,6 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
           : '';
         alert(`✅ Importação concluída!\n\n${newTransactions.length} transações importadas.\n${skippedCount} duplicatas ignoradas.${updatedCount > 0 ? `\n${updatedCount} atualizadas.` : ''}${entityMsg}${errorMsg}`);
       } catch (error: any) {
-        // #region agent log
-        console.error('🔍 DEBUG: Error in onImport', error);
-        fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:416',message:'Error in onImport',data:{errorMessage:error?.message,errorCode:error?.code,errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,D'})}).catch(()=>{});
-        // #endregion
         console.error("Error importing transactions:", error);
         const errorMsg = error?.message || "Erro desconhecido ao salvar transações no Firebase";
         setImportErrors([...errors, errorMsg]);
@@ -467,10 +426,6 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
         alert(`❌ Erro na importação:\n\n${errorMsg}\n\nVerifique o console para mais detalhes.`);
       }
     } else {
-      // #region agent log
-      console.log('🔍 DEBUG: No valid transactions', { errorsLength: errors.length, newTransactionsLength: newTransactions.length });
-      fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:427',message:'No valid transactions',data:{errorsLength:errors.length,newTransactionsLength:newTransactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
-      // #endregion
       alert('Nenhuma transação válida encontrada para importar.');
       setIsImporting(false);
       setImportProgress({ current: 0, total: 0, message: '' });

@@ -179,10 +179,6 @@ const App: React.FC = () => {
   };
 
   const handleBulkAddTransactions = async (newTs: Omit<Transaction, 'id'>[]) => {
-    // #region agent log
-    console.log('🔍 DEBUG: handleBulkAddTransactions START', { newTsLength: newTs.length, firstTransaction: newTs[0]?.description });
-    fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:181',message:'handleBulkAddTransactions START',data:{newTsLength:newTs.length,firstTransaction:newTs[0]?.description},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,D'})}).catch(()=>{});
-    // #endregion
     console.log(`🚀 Iniciando salvamento de ${newTs.length} transações no Firebase...`);
     
     try {
@@ -196,23 +192,13 @@ const App: React.FC = () => {
         const batchNumber = Math.floor(i / batchSize) + 1;
         console.log(`📦 Processando batch ${batchNumber} (${batch.length} transações)...`);
         
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:194',message:'Starting batch',data:{batchNumber,batchSize:batch.length,startIndex:i},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-        
         const batchPromises = batch.map((t, idx) => 
           transactionService.add(t)
             .then(docRef => {
-              // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:200',message:'Transaction saved',data:{transactionIndex:i+idx+1,docId:docRef.id,description:t.description},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-              // #endregion
               console.log(`✅ Transação ${i + idx + 1} salva com ID: ${docRef.id}`);
               return { ...t, id: docRef.id };
             })
             .catch(error => {
-              // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:205',message:'Transaction save failed',data:{transactionIndex:i+idx+1,errorCode:error?.code,errorMessage:error?.message,description:t.description},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-              // #endregion
               console.error(`❌ Erro ao salvar transação ${i + idx + 1}:`, error);
               console.error('Dados da transação:', t);
               failedTransactions.push({ transaction: t, error });
@@ -221,15 +207,8 @@ const App: React.FC = () => {
         );
         
         try {
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:213',message:'Waiting for batch results',data:{batchNumber,promisesCount:batchPromises.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           // Use allSettled to get all results, even if some fail
           const batchResults = await Promise.allSettled(batchPromises);
-          
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:216',message:'Batch results received',data:{batchNumber,fulfilled:batchResults.filter(r=>r.status==='fulfilled').length,rejected:batchResults.filter(r=>r.status==='rejected').length,total:batchResults.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           
           batchResults.forEach((result, idx) => {
             if (result.status === 'fulfilled') {
@@ -245,10 +224,6 @@ const App: React.FC = () => {
           
           const fulfilledCount = batchResults.filter(r => r.status === 'fulfilled').length;
           console.log(`✅ Batch ${batchNumber}: ${fulfilledCount}/${batch.length} transações salvas`);
-          
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:229',message:'Batch completed',data:{batchNumber,fulfilledCount,totalInBatch:batch.length,addedTransactionsSoFar:addedTransactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
         } catch (batchError: any) {
           console.error(`❌ Erro crítico no batch ${batchNumber}:`, batchError);
           console.error('Detalhes do erro:', {
@@ -271,22 +246,10 @@ const App: React.FC = () => {
         }
       }
       
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:272',message:'All batches completed',data:{addedTransactionsLength:addedTransactions.length,failedTransactionsLength:failedTransactions.length,totalProcessed:newTs.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      
       // Update local state only with successfully saved transactions
       if (addedTransactions.length > 0) {
-        // #region agent log
-        console.log('🔍 DEBUG: Updating local state', { addedTransactionsLength: addedTransactions.length, existingTransactionsLength: transactions.length });
-        fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:210',message:'Updating local state',data:{addedTransactionsLength:addedTransactions.length,existingTransactionsLength:transactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         setTransactions([...addedTransactions, ...transactions]);
         console.log(`✅ Total de ${addedTransactions.length} transações salvas no Firebase e estado local atualizado`);
-      } else {
-        // #region agent log
-        console.log('🔍 DEBUG: No transactions were saved', { addedTransactionsLength: addedTransactions.length, failedTransactionsLength: failedTransactions.length });
-        // #endregion
       }
       
       // Report failures
@@ -313,10 +276,6 @@ const App: React.FC = () => {
       }
       
     } catch (error: any) {
-      // #region agent log
-      console.error('🔍 DEBUG: Critical error in handleBulkAddTransactions', error);
-      fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:225',message:'Critical error in handleBulkAddTransactions',data:{errorCode:error?.code,errorMessage:error?.message,errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       console.error("❌ Erro crítico ao adicionar transações em lote:", error);
       console.error('Detalhes:', {
         code: error?.code,
