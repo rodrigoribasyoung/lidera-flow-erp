@@ -1,30 +1,32 @@
+// Transaction Types (values remain in Portuguese for Brazilian UI)
 export type TransactionType = 'Entrada' | 'Saída';
 export type TransactionStatus = 'Pago' | 'Recebido' | 'A pagar' | 'A receber' | 'Atrasado' | 'Cancelado';
+export type AccountType = 'Corrente' | 'Poupança' | 'Caixa' | 'Investimento';
 
 export interface Account {
   id: string;
   name: string;
-  type: 'Corrente' | 'Poupança' | 'Caixa' | 'Investimento';
+  type: AccountType;
   initialBalance: number;
   color: string;
 }
 
 export interface Transaction {
   id: string;
-  dataLancamento: string;
-  dataVencimento: string;
-  tipo: TransactionType;
-  categoria: string;
-  entidade: string; // Cliente ou Fornecedor
-  produtoServico: string;
-  centroCusto: string;
-  formaPagamento: string;
+  issueDate: string; // Data de lançamento
+  dueDate: string; // Data de vencimento
+  type: TransactionType; // Tipo (Entrada/Saída)
+  category: string; // Categoria
+  entity: string; // Entidade (Cliente/Fornecedor)
+  productService: string; // Produto ou Serviço
+  costCenter: string; // Centro de Custo
+  paymentMethod: string; // Forma de Pagamento
   accountId?: string; // Linked bank account
-  descricao: string;
-  valorPrevisto: number;
-  valorRealizado: number;
-  dataPagamento?: string;
-  dataCompetencia: string;
+  description: string; // Descrição
+  expectedAmount: number; // Valor Previsto
+  actualAmount: number; // Valor Realizado
+  paymentDate?: string; // Data de Pagamento/Recebimento
+  accrualDate: string; // Data de Competência
   status: TransactionStatus;
 }
 

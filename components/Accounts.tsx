@@ -29,8 +29,8 @@ const Accounts: React.FC<AccountsProps> = ({ accounts, transactions, darkMode, o
     let balance = account.initialBalance;
     transactions.forEach(t => {
       if (t.accountId === account.id && (t.status === 'Pago' || t.status === 'Recebido')) {
-        if (t.tipo === 'Entrada') balance += t.valorRealizado;
-        else balance -= t.valorRealizado;
+        if (t.type === 'Entrada') balance += t.actualAmount;
+        else balance -= t.actualAmount;
       }
     });
     return balance;

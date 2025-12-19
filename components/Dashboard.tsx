@@ -62,7 +62,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
-      const tDate = new Date(t.dataCompetencia);
+      const tDate = new Date(t.accrualDate);
       const dateMatch = tDate >= startDate && tDate <= endDate;
       const accountMatch = selectedAccount === 'all' || t.accountId === selectedAccount;
       return dateMatch && accountMatch;
@@ -78,8 +78,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
     transactions.forEach(t => {
       if (selectedAccount !== 'all' && t.accountId !== selectedAccount) return;
       if (t.status === 'Pago' || t.status === 'Recebido') {
-        if (t.tipo === 'Entrada') total += t.valorRealizado;
-        else total -= t.valorRealizado;
+        if (t.type === 'Entrada') total += t.actualAmount;
+        else total -= t.actualAmount;
       }
     });
     return total;
@@ -87,20 +87,20 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
   
   const metrics = useMemo(() => {
     const totalIncome = filteredTransactions
-      .filter(t => t.tipo === 'Entrada' && (t.status === 'Recebido' || t.status === 'Pago'))
-      .reduce((acc, curr) => acc + curr.valorRealizado, 0);
+      .filter(t => t.type === 'Entrada' && (t.status === 'Recebido' || t.status === 'Pago'))
+      .reduce((acc, curr) => acc + curr.actualAmount, 0);
 
     const totalExpense = filteredTransactions
-      .filter(t => t.tipo === 'Saída' && t.status === 'Pago')
-      .reduce((acc, curr) => acc + curr.valorRealizado, 0);
+      .filter(t => t.type === 'Saída' && t.status === 'Pago')
+      .reduce((acc, curr) => acc + curr.actualAmount, 0);
 
     const pendingIncome = filteredTransactions
-      .filter(t => t.tipo === 'Entrada' && t.status === 'A receber')
-      .reduce((acc, curr) => acc + curr.valorPrevisto, 0);
+      .filter(t => t.type === 'Entrada' && t.status === 'A receber')
+      .reduce((acc, curr) => acc + curr.expectedAmount, 0);
 
     const pendingExpense = filteredTransactions
-      .filter(t => t.tipo === 'Saída' && t.status === 'A pagar')
-      .reduce((acc, curr) => acc + curr.valorPrevisto, 0);
+      .filter(t => t.type === 'Saída' && t.status === 'A pagar')
+      .reduce((acc, curr) => acc + curr.expectedAmount, 0);
 
     return {
       totalIncome,
@@ -115,8 +115,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
   const categoryData = useMemo(() => {
     const data: Record<string, number> = {};
     filteredTransactions.forEach(t => {
-      if (t.tipo === 'Saída') {
-        data[t.categoria] = (data[t.categoria] || 0) + (t.status === 'Pago' ? t.valorRealizado : t.valorPrevisto);
+      if (t.type === 'Saída') {
+        data[t.category] = (data[t.category] || 0) + (t.status === 'Pago' ? t.actualAmount : t.expectedAmount);
       }
     });
     return Object.keys(data).map(name => ({ name, value: data[name] }))
@@ -134,7 +134,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
       const monthName = d.toLocaleString('pt-BR', { month: 'short' });
       
       const income = transactions.filter(t => {
-        const tDate = new Date(t.dataCompetencia);
+        const tDate = new Date(t.accrualDate);
         return tDate.getMonth() === d.getMonth() && 
                tDate.getFullYear() === d.getFullYear() && 
                t.tipo === 'Entrada' && 
@@ -143,13 +143,13 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, accounts, darkMode 
       }).reduce((acc, t) => acc + t.valorRealizado, 0);
 
       const expense = transactions.filter(t => {
-        const tDate = new Date(t.dataCompetencia);
+        const tDate = new Date(t.accrualDate);
         return tDate.getMonth() === d.getMonth() && 
                tDate.getFullYear() === d.getFullYear() && 
-               t.tipo === 'Saída' && 
+               t.type === 'Saída' && 
                (selectedAccount === 'all' || t.accountId === selectedAccount) &&
                t.status === 'Pago';
-      }).reduce((acc, t) => acc + t.valorRealizado, 0);
+      }).reduce((acc, t) => acc + t.actualAmount, 0);
 
       data.push({ name: monthName, Receitas: income, Despesas: expense });
     }

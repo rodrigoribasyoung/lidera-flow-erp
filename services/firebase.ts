@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
-import { Transaction } from "../types";
+import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc } from "firebase/firestore";
+import { Transaction, AppSettings, Account } from "../types";
 
 const firebaseConfig = {
   apiKey: "AIzaSyADEtHK6sKc306bJkCcEinKENcnPO2T3wo",
@@ -17,6 +17,8 @@ export const db = getFirestore(app);
 // Collection References
 export const TRANSACTIONS_COLLECTION = "transactions";
 export const SETTINGS_COLLECTION = "settings";
+export const ACCOUNTS_COLLECTION = "accounts";
+const SETTINGS_DOC_ID = "main"; // Single document for settings
 
 // Service functions
 export const transactionService = {
@@ -62,6 +64,90 @@ export const transactionService = {
       return await deleteDoc(doc(db, TRANSACTIONS_COLLECTION, id));
     } catch (error: any) {
       console.error("Error deleting transaction:", error);
+      if (error.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+        throw new Error("Permissão negada pelo Firestore. Configure as regras de segurança.");
+      }
+      throw error;
+    }
+  }
+};
+
+// Settings Service (single document)
+export const settingsService = {
+  get: async (): Promise<AppSettings | null> => {
+    try {
+      const docRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data() as AppSettings;
+      }
+      return null;
+    } catch (error: any) {
+      console.error("Error fetching settings:", error);
+      if (error.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+      }
+      return null;
+    }
+  },
+  save: async (settings: AppSettings) => {
+    try {
+      return await setDoc(doc(db, SETTINGS_COLLECTION, SETTINGS_DOC_ID), settings);
+    } catch (error: any) {
+      console.error("Error saving settings:", error);
+      if (error.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+        throw new Error("Permissão negada pelo Firestore. Configure as regras de segurança.");
+      }
+      throw error;
+    }
+  }
+};
+
+// Accounts Service
+export const accountsService = {
+  getAll: async (): Promise<Account[]> => {
+    try {
+      const querySnapshot = await getDocs(collection(db, ACCOUNTS_COLLECTION));
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
+    } catch (error: any) {
+      console.error("Error fetching accounts:", error);
+      if (error.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+      }
+      return [];
+    }
+  },
+  add: async (account: Omit<Account, 'id'>) => {
+    try {
+      return await addDoc(collection(db, ACCOUNTS_COLLECTION), account);
+    } catch (error: any) {
+      console.error("Error adding account:", error);
+      if (error.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+        throw new Error("Permissão negada pelo Firestore. Configure as regras de segurança.");
+      }
+      throw error;
+    }
+  },
+  update: async (id: string, data: Partial<Account>) => {
+    try {
+      return await updateDoc(doc(db, ACCOUNTS_COLLECTION, id), data);
+    } catch (error: any) {
+      console.error("Error updating account:", error);
+      if (error.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+        throw new Error("Permissão negada pelo Firestore. Configure as regras de segurança.");
+      }
+      throw error;
+    }
+  },
+  delete: async (id: string) => {
+    try {
+      return await deleteDoc(doc(db, ACCOUNTS_COLLECTION, id));
+    } catch (error: any) {
+      console.error("Error deleting account:", error);
       if (error.code === 'permission-denied') {
         console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
         throw new Error("Permissão negada pelo Firestore. Configure as regras de segurança.");

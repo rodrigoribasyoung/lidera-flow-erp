@@ -67,7 +67,9 @@ Após configurar as regras:
 ## Coleções que Serão Criadas Automaticamente
 
 - `transactions` - Armazena todas as transações financeiras
-- `settings` - Armazena configurações do app (futuro)
+- `settings` - Armazena configurações do app (categorias, entidades, métodos de pagamento, centros de custo)
+  - Documento único com ID: `main`
+- `accounts` - Armazena todas as contas bancárias/caixas
 
 ## Troubleshooting
 

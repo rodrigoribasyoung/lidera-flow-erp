@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Search, Trash2, Edit2, X, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Transaction, AppSettings, TransactionType, TransactionStatus, Account } from '../types';
+import CsvImporter from './CsvImporter';
 
 interface TransactionsProps {
   transactions: Transaction[];
@@ -13,7 +14,7 @@ interface TransactionsProps {
   onBulkAdd: (transactions: Omit<Transaction, 'id'>[]) => void;
 }
 
-type SortField = 'dataVencimento' | 'descricao' | 'valor' | 'entidade';
+type SortField = 'dueDate' | 'description' | 'valor' | 'entity';
 type SortDirection = 'asc' | 'desc';
 
 const Transactions: React.FC<TransactionsProps> = ({ 
@@ -28,15 +29,9 @@ const Transactions: React.FC<TransactionsProps> = ({
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Sorting State
-  const [sortField, setSortField] = useState<SortField>('dataVencimento');
+  const [sortField, setSortField] = useState<SortField>('dueDate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  // CSV Import State
-  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
-  const [csvPreviewData, setCsvPreviewData] = useState<string[][]>([]);
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({}); // systemField -> csvColumnIndex
-  const [duplicateStrategy, setDuplicateStrategy] = useState<'import_all' | 'skip_exact'>('skip_exact');
 
   // Installment State (Form)
   const [isInstallment, setIsInstallment] = useState(false);
@@ -44,19 +39,19 @@ const Transactions: React.FC<TransactionsProps> = ({
 
   // Initial Form State
   const initialFormState = {
-    dataLancamento: new Date().toISOString().split('T')[0],
-    dataVencimento: new Date().toISOString().split('T')[0],
-    tipo: 'Saída' as TransactionType,
-    categoria: '',
-    entidade: '',
-    produtoServico: '',
-    centroCusto: settings.costCenters[0] || '',
-    formaPagamento: settings.paymentMethods[0] || '',
+    issueDate: new Date().toISOString().split('T')[0],
+    dueDate: new Date().toISOString().split('T')[0],
+    type: 'Saída' as TransactionType,
+    category: '',
+    entity: '',
+    productService: '',
+    costCenter: settings.costCenters[0] || '',
+    paymentMethod: settings.paymentMethods[0] || '',
     accountId: accounts[0]?.id || '',
-    descricao: '',
-    valorPrevisto: 0,
-    valorRealizado: 0,
-    dataCompetencia: new Date().toISOString().split('T')[0],
+    description: '',
+    expectedAmount: 0,
+    actualAmount: 0,
+    accrualDate: new Date().toISOString().split('T')[0],
     status: 'A pagar' as TransactionStatus
   };
 
@@ -72,9 +67,9 @@ const Transactions: React.FC<TransactionsProps> = ({
     } else {
       if (isInstallment && installmentsCount > 1) {
         // Handle Installments logic
-        const baseValuePrevisto = formData.valorPrevisto / installmentsCount;
-        const baseValueRealizado = formData.valorRealizado / installmentsCount;
-        const baseDate = new Date(formData.dataVencimento);
+        const baseExpectedAmount = formData.expectedAmount / installmentsCount;
+        const baseActualAmount = formData.actualAmount / installmentsCount;
+        const baseDate = new Date(formData.dueDate);
         
         for (let i = 0; i < installmentsCount; i++) {
           const newDate = new Date(baseDate);
@@ -84,12 +79,12 @@ const Transactions: React.FC<TransactionsProps> = ({
           
           onAdd({
             ...formData,
-            descricao: `${formData.descricao} (${i + 1}/${installmentsCount})`,
-            valorPrevisto: Number(baseValuePrevisto.toFixed(2)),
-            valorRealizado: Number(baseValueRealizado.toFixed(2)),
-            dataVencimento: dateStr,
-            dataCompetencia: dateStr, // Assuming competence follows due date for simplicity
-            dataLancamento: new Date().toISOString().split('T')[0]
+            description: `${formData.description} (${i + 1}/${installmentsCount})`,
+            expectedAmount: Number(baseExpectedAmount.toFixed(2)),
+            actualAmount: Number(baseActualAmount.toFixed(2)),
+            dueDate: dateStr,
+            accrualDate: dateStr, // Assuming competence follows due date for simplicity
+            issueDate: new Date().toISOString().split('T')[0]
           });
         }
       } else {
@@ -112,19 +107,19 @@ const Transactions: React.FC<TransactionsProps> = ({
   const handleEdit = (t: Transaction) => {
     setEditingId(t.id);
     setFormData({
-      dataLancamento: t.dataLancamento,
-      dataVencimento: t.dataVencimento,
-      tipo: t.tipo,
-      categoria: t.categoria,
-      entidade: t.entidade,
-      produtoServico: t.produtoServico,
-      centroCusto: t.centroCusto,
-      formaPagamento: t.formaPagamento,
+      issueDate: t.issueDate,
+      dueDate: t.dueDate,
+      type: t.type,
+      category: t.category,
+      entity: t.entity,
+      productService: t.productService,
+      costCenter: t.costCenter,
+      paymentMethod: t.paymentMethod,
       accountId: t.accountId || accounts[0]?.id || '',
-      descricao: t.descricao,
-      valorPrevisto: t.valorPrevisto,
-      valorRealizado: t.valorRealizado,
-      dataCompetencia: t.dataCompetencia,
+      description: t.description,
+      expectedAmount: t.expectedAmount,
+      actualAmount: t.actualAmount,
+      accrualDate: t.accrualDate,
       status: t.status
     });
     setIsInstallment(false); // Can't convert existing to installment easily in edit mode
@@ -143,9 +138,9 @@ const Transactions: React.FC<TransactionsProps> = ({
 
   const filteredAndSortedData = useMemo(() => {
     const filtered = transactions.filter(t => 
-      t.descricao.toLowerCase().includes(filter.toLowerCase()) ||
-      t.entidade.toLowerCase().includes(filter.toLowerCase()) ||
-      t.categoria.toLowerCase().includes(filter.toLowerCase())
+      t.description.toLowerCase().includes(filter.toLowerCase()) ||
+      t.entity.toLowerCase().includes(filter.toLowerCase()) ||
+      t.category.toLowerCase().includes(filter.toLowerCase())
     );
 
     return filtered.sort((a, b) => {
@@ -153,8 +148,8 @@ const Transactions: React.FC<TransactionsProps> = ({
       let valB: any = b[sortField as keyof Transaction];
 
       if (sortField === 'valor') {
-        valA = a.status === 'Pago' || a.status === 'Recebido' ? a.valorRealizado : a.valorPrevisto;
-        valB = b.status === 'Pago' || b.status === 'Recebido' ? b.valorRealizado : b.valorPrevisto;
+        valA = a.status === 'Pago' || a.status === 'Recebido' ? a.actualAmount : a.expectedAmount;
+        valB = b.status === 'Pago' || b.status === 'Recebido' ? b.actualAmount : b.expectedAmount;
       }
 
       if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
@@ -170,130 +165,6 @@ const Transactions: React.FC<TransactionsProps> = ({
     currentPage * itemsPerPage
   );
 
-  // --- CSV Import Handlers ---
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const csvData = event.target?.result as string;
-      const lines = csvData.split('\n').filter(l => l.trim() !== '');
-      if (lines.length < 1) return;
-
-      // Basic parsing to split columns
-      const parsed = lines.map(line => {
-         // Handle quotes if simple splitting fails, but for now simple split
-         // A more robust regex for CSV splitting:
-         const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
-         return matches.map(m => m.replace(/^"|"$/g, '').trim());
-      });
-
-      setCsvHeaders(parsed[0]);
-      setCsvPreviewData(parsed.slice(1, 6)); // Preview 5 rows
-      setAllCsvRows(parsed.slice(1)); // Store all
-      
-      // Auto-guess mapping
-      const initialMap: Record<string, string> = {};
-      parsed[0].forEach((h, idx) => {
-         const lower = h.toLowerCase();
-         if (lower.includes('desc')) initialMap['descricao'] = idx.toString();
-         else if (lower.includes('val')) initialMap['valorPrevisto'] = idx.toString();
-         else if (lower.includes('venc') || lower.includes('data')) initialMap['dataVencimento'] = idx.toString();
-         else if (lower.includes('cat')) initialMap['categoria'] = idx.toString();
-         else if (lower.includes('entid') || lower.includes('clien') || lower.includes('forne')) initialMap['entidade'] = idx.toString();
-         else if (lower.includes('tipo')) initialMap['tipo'] = idx.toString();
-         else if (lower.includes('status')) initialMap['status'] = idx.toString();
-      });
-      setFieldMapping(initialMap);
-      setIsCsvModalOpen(true);
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
-  const [allCsvRows, setAllCsvRows] = useState<string[][]>([]);
-
-  const processCsvImport = () => {
-    const newTransactions: Omit<Transaction, 'id'>[] = [];
-    let skippedCount = 0;
-
-    allCsvRows.forEach(row => {
-       if (row.length < 2) return;
-
-       // Helpers
-       const getCol = (field: keyof Omit<Transaction, 'id'>) => {
-          const idx = fieldMapping[field];
-          if (!idx) return undefined;
-          return row[parseInt(idx)];
-       };
-
-       // Parsers
-       const parseDate = (val?: string) => {
-          if (!val) return new Date().toISOString().split('T')[0];
-          // Try DD/MM/YYYY
-          if (val.includes('/')) {
-             const parts = val.split('/');
-             if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
-          }
-          // Try YYYY-MM-DD
-          if (val.includes('-')) return val;
-          return new Date().toISOString().split('T')[0];
-       };
-
-       const parseMoney = (val?: string) => {
-          if (!val) return 0;
-          // Clean currency symbol and dots, keep comma as decimal or dot as decimal
-          // Assuming BR format: 1.000,00
-          let clean = val.replace(/[R$\s]/g, '');
-          if (clean.includes(',') && clean.includes('.')) {
-             clean = clean.replace(/\./g, '').replace(',', '.');
-          } else if (clean.includes(',')) {
-             clean = clean.replace(',', '.');
-          }
-          return parseFloat(clean) || 0;
-       };
-
-       const typeRaw = getCol('tipo') || 'Saída';
-       const tipo: TransactionType = typeRaw.toLowerCase().startsWith('e') ? 'Entrada' : 'Saída';
-
-       const t: Omit<Transaction, 'id'> = {
-         dataLancamento: new Date().toISOString().split('T')[0],
-         dataVencimento: parseDate(getCol('dataVencimento')),
-         dataCompetencia: parseDate(getCol('dataCompetencia')) || parseDate(getCol('dataVencimento')),
-         tipo: tipo,
-         categoria: getCol('categoria') || 'Geral',
-         entidade: getCol('entidade') || 'Não informado',
-         produtoServico: getCol('produtoServico') || '',
-         centroCusto: getCol('centroCusto') || '',
-         formaPagamento: getCol('formaPagamento') || '',
-         descricao: getCol('descricao') || 'Importado via CSV',
-         valorPrevisto: parseMoney(getCol('valorPrevisto')),
-         valorRealizado: parseMoney(getCol('valorRealizado')) || parseMoney(getCol('valorPrevisto')),
-         accountId: accounts[0]?.id || '',
-         status: (getCol('status') as TransactionStatus) || 'Pago'
-       };
-
-       // Duplicate Check
-       if (duplicateStrategy === 'skip_exact') {
-          const exists = transactions.some(exist => 
-             exist.descricao === t.descricao && 
-             exist.valorPrevisto === t.valorPrevisto && 
-             exist.dataVencimento === t.dataVencimento
-          );
-          if (exists) {
-            skippedCount++;
-            return;
-          }
-       }
-
-       newTransactions.push(t);
-    });
-
-    onBulkAdd(newTransactions);
-    setIsCsvModalOpen(false);
-    alert(`Importação concluída! ${newTransactions.length} registros importados. ${skippedCount} duplicatas ignoradas.`);
-  };
 
   // --- Render Helpers ---
   const formatCurrency = (val: number) => 
@@ -330,12 +201,12 @@ const Transactions: React.FC<TransactionsProps> = ({
 
   // Available lists for Modal based on type
   const availableCategories = settings.categories.filter(c => {
-    if (formData.tipo === 'Entrada') return c.type === 'Receita';
+    if (formData.type === 'Entrada') return c.type === 'Receita';
     return c.type === 'Despesa';
   });
 
   const availableEntities = settings.entities.filter(e => {
-      if (formData.tipo === 'Entrada') return e.type === 'Cliente' || e.type === 'Ambos';
+      if (formData.type === 'Entrada') return e.type === 'Cliente' || e.type === 'Ambos';
       return e.type === 'Fornecedor' || e.type === 'Ambos';
   });
 
@@ -347,13 +218,12 @@ const Transactions: React.FC<TransactionsProps> = ({
           <p className={subText}>Gerencie suas entradas e saídas</p>
         </div>
         <div className="flex gap-2">
-          <div className="relative">
-            <input type="file" accept=".csv" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-            <button className={`h-full p-2 px-4 rounded-lg border flex items-center gap-2 ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
-              <Upload size={18} />
-              <span className="hidden md:inline">Importar CSV</span>
-            </button>
-          </div>
+          <CsvImporter
+            onImport={onBulkAdd}
+            existingTransactions={transactions}
+            accounts={accounts}
+            darkMode={darkMode}
+          />
           <button 
             onClick={() => { setEditingId(null); setFormData(initialFormState); setIsModalOpen(true); }}
             className={`p-2 px-4 rounded-lg flex items-center gap-2 font-medium ${darkMode ? 'bg-yellow-500 text-zinc-900 hover:bg-yellow-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
@@ -397,15 +267,15 @@ const Transactions: React.FC<TransactionsProps> = ({
           <table className="w-full text-sm text-left whitespace-nowrap">
             <thead className={`text-xs uppercase font-semibold ${tableHeadBg} ${subText}`}>
               <tr>
-                <th className="px-6 py-4 cursor-pointer hover:text-blue-500" onClick={() => handleSort('dataVencimento')}>
-                    <div className="flex items-center gap-1">Vencimento <SortIcon field="dataVencimento" /></div>
+                <th className="px-6 py-4 cursor-pointer hover:text-blue-500" onClick={() => handleSort('dueDate')}>
+                    <div className="flex items-center gap-1">Vencimento <SortIcon field="dueDate" /></div>
                 </th>
-                <th className="px-6 py-4 cursor-pointer hover:text-blue-500" onClick={() => handleSort('descricao')}>
-                    <div className="flex items-center gap-1">Descrição <SortIcon field="descricao" /></div>
+                <th className="px-6 py-4 cursor-pointer hover:text-blue-500" onClick={() => handleSort('description')}>
+                    <div className="flex items-center gap-1">Descrição <SortIcon field="description" /></div>
                 </th>
                 <th className="px-6 py-4">Categoria</th>
-                <th className="px-6 py-4 cursor-pointer hover:text-blue-500" onClick={() => handleSort('entidade')}>
-                    <div className="flex items-center gap-1">Entidade <SortIcon field="entidade" /></div>
+                <th className="px-6 py-4 cursor-pointer hover:text-blue-500" onClick={() => handleSort('entity')}>
+                    <div className="flex items-center gap-1">Entidade <SortIcon field="entity" /></div>
                 </th>
                 <th className="px-6 py-4">Conta</th>
                 <th className="px-6 py-4 text-right cursor-pointer hover:text-blue-500" onClick={() => handleSort('valor')}>
@@ -421,15 +291,15 @@ const Transactions: React.FC<TransactionsProps> = ({
                 const isPaid = t.status === 'Pago' || t.status === 'Recebido';
                 return (
                 <tr key={t.id} className={`group transition-colors ${darkMode ? 'hover:bg-zinc-800/30' : 'hover:bg-slate-50'}`}>
-                  <td className={`px-6 py-4 font-medium ${textColor}`}>{formatDate(t.dataVencimento)}</td>
+                  <td className={`px-6 py-4 font-medium ${textColor}`}>{formatDate(t.dueDate)}</td>
                   <td className={`px-6 py-4 ${textColor}`}>
-                      <div className="truncate max-w-[200px]" title={t.descricao}>{t.descricao}</div>
+                      <div className="truncate max-w-[200px]" title={t.description}>{t.description}</div>
                   </td>
-                  <td className={`px-6 py-4 ${subText}`}>{t.categoria}</td>
-                  <td className={`px-6 py-4 ${subText}`}>{t.entidade}</td>
+                  <td className={`px-6 py-4 ${subText}`}>{t.category}</td>
+                  <td className={`px-6 py-4 ${subText}`}>{t.entity}</td>
                   <td className={`px-6 py-4 ${subText} text-xs`}>{accountName}</td>
-                  <td className={`px-6 py-4 text-right font-medium ${t.tipo === 'Entrada' ? 'text-emerald-500' : 'text-red-500'}`}>
-                    {t.tipo === 'Saída' ? '-' : '+'} {formatCurrency(isPaid ? t.valorRealizado : t.valorPrevisto)}
+                  <td className={`px-6 py-4 text-right font-medium ${t.type === 'Entrada' ? 'text-emerald-500' : 'text-red-500'}`}>
+                    {t.type === 'Saída' ? '-' : '+'} {formatCurrency(isPaid ? t.actualAmount : t.expectedAmount)}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(t.status)}`}>
@@ -476,105 +346,6 @@ const Transactions: React.FC<TransactionsProps> = ({
         </div>
       </div>
 
-      {/* CSV Mapping Modal */}
-      {isCsvModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-           <div className={`w-full max-w-4xl rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto ${cardBg}`}>
-              <div className={`p-6 border-b flex justify-between items-center ${darkMode ? 'border-zinc-800' : 'border-slate-200'}`}>
-                <h3 className={`text-xl font-bold flex items-center gap-2 ${textColor}`}>
-                   <FileSpreadsheet /> Importação Inteligente de CSV
-                </h3>
-                <button type="button" onClick={() => setIsCsvModalOpen(false)} className={subText}><X size={24} /></button>
-              </div>
-              
-              <div className="p-6 space-y-6">
-                 {/* Duplicate Strategy */}
-                 <div className={`p-4 rounded-lg border ${darkMode ? 'bg-zinc-950/50 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
-                    <h4 className={`font-semibold mb-3 ${textColor}`}>Em caso de duplicidade (mesma data, valor e descrição):</h4>
-                    <div className="flex gap-4">
-                       <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="radio" 
-                            name="strategy" 
-                            checked={duplicateStrategy === 'skip_exact'}
-                            onChange={() => setDuplicateStrategy('skip_exact')}
-                          />
-                          <span className={textColor}>Pular (Não importar)</span>
-                       </label>
-                       <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="radio" 
-                            name="strategy" 
-                            checked={duplicateStrategy === 'import_all'}
-                            onChange={() => setDuplicateStrategy('import_all')}
-                          />
-                          <span className={textColor}>Importar Tudo (Pode duplicar)</span>
-                       </label>
-                    </div>
-                 </div>
-
-                 {/* Column Mapping */}
-                 <div>
-                    <h4 className={`font-semibold mb-3 ${textColor}`}>Mapeie as colunas do seu arquivo:</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                       {[
-                         { key: 'descricao', label: 'Descrição' },
-                         { key: 'valorPrevisto', label: 'Valor' },
-                         { key: 'dataVencimento', label: 'Data Vencimento' },
-                         { key: 'categoria', label: 'Categoria' },
-                         { key: 'entidade', label: 'Entidade/Cliente' },
-                         { key: 'tipo', label: 'Tipo (Entrada/Saída)' },
-                         { key: 'status', label: 'Status' }
-                       ].map(field => (
-                          <div key={field.key}>
-                             <label className={`block text-xs font-medium mb-1 ${subText}`}>{field.label}</label>
-                             <select 
-                                value={fieldMapping[field.key] || ''}
-                                onChange={(e) => setFieldMapping({...fieldMapping, [field.key]: e.target.value})}
-                                className={`w-full p-2 rounded border ${inputBg}`}
-                             >
-                                <option value="">Não mapear</option>
-                                {csvHeaders.map((h, i) => (
-                                   <option key={i} value={i}>{h}</option>
-                                ))}
-                             </select>
-                          </div>
-                       ))}
-                    </div>
-                 </div>
-
-                 {/* Preview */}
-                 <div>
-                    <h4 className={`font-semibold mb-3 ${textColor}`}>Pré-visualização (Primeiras 5 linhas):</h4>
-                    <div className="overflow-x-auto rounded border border-gray-200 dark:border-zinc-800">
-                       <table className="w-full text-xs">
-                          <thead className={tableHeadBg}>
-                             <tr>
-                               {csvHeaders.map((h, i) => <th key={i} className={`p-2 border-r ${darkMode ? 'border-zinc-700 text-zinc-400' : 'border-slate-200 text-slate-500'}`}>{h}</th>)}
-                             </tr>
-                          </thead>
-                          <tbody>
-                             {csvPreviewData.map((row, rIdx) => (
-                               <tr key={rIdx} className="border-t border-gray-100 dark:border-zinc-800">
-                                  {row.map((cell, cIdx) => <td key={cIdx} className={`p-2 border-r truncate max-w-[100px] ${darkMode ? 'border-zinc-800 text-zinc-400' : 'border-slate-100 text-slate-600'}`}>{cell}</td>)}
-                               </tr>
-                             ))}
-                          </tbody>
-                       </table>
-                    </div>
-                 </div>
-              </div>
-
-              <div className={`p-6 border-t flex justify-end gap-3 ${darkMode ? 'border-zinc-800' : 'border-slate-200'}`}>
-                <button type="button" onClick={() => setIsCsvModalOpen(false)} className={`px-4 py-2 rounded-lg font-medium ${darkMode ? 'hover:bg-zinc-800 text-zinc-300' : 'hover:bg-slate-100 text-slate-600'}`}>Cancelar</button>
-                <button type="button" onClick={processCsvImport} className={`px-4 py-2 rounded-lg font-medium ${darkMode ? 'bg-yellow-500 text-zinc-900 hover:bg-yellow-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                   Confirmar Importação
-                </button>
-              </div>
-           </div>
-        </div>
-      )}
-
       {/* Add/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -593,15 +364,15 @@ const Transactions: React.FC<TransactionsProps> = ({
                   <div className={`flex p-1 rounded-lg border ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'}`}>
                     <button 
                       type="button"
-                      onClick={() => setFormData({...formData, tipo: 'Entrada', categoria: ''})}
-                      className={`px-6 py-2 rounded-md text-sm font-bold transition-colors ${formData.tipo === 'Entrada' ? 'bg-emerald-500 text-white shadow' : subText}`}
+                      onClick={() => setFormData({...formData, type: 'Entrada', category: ''})}
+                      className={`px-6 py-2 rounded-md text-sm font-bold transition-colors ${formData.type === 'Entrada' ? 'bg-emerald-500 text-white shadow' : subText}`}
                     >
                       Entrada
                     </button>
                     <button 
                       type="button"
-                      onClick={() => setFormData({...formData, tipo: 'Saída', categoria: ''})}
-                      className={`px-6 py-2 rounded-md text-sm font-bold transition-colors ${formData.tipo === 'Saída' ? 'bg-red-500 text-white shadow' : subText}`}
+                      onClick={() => setFormData({...formData, type: 'Saída', category: ''})}
+                      className={`px-6 py-2 rounded-md text-sm font-bold transition-colors ${formData.type === 'Saída' ? 'bg-red-500 text-white shadow' : subText}`}
                     >
                       Saída
                     </button>
@@ -640,7 +411,7 @@ const Transactions: React.FC<TransactionsProps> = ({
 
                 <div className="space-y-1 md:col-span-2">
                   <label className={`text-xs font-medium ${subText}`}>Descrição {isInstallment && '(Será numerada ex: 1/x)'}</label>
-                  <input required className={`w-full p-2 rounded border ${inputBg}`} value={formData.descricao} onChange={e => setFormData({...formData, descricao: e.target.value})} />
+                  <input required className={`w-full p-2 rounded border ${inputBg}`} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
                 </div>
 
                 <div className="space-y-1">
@@ -652,29 +423,29 @@ const Transactions: React.FC<TransactionsProps> = ({
 
                 <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Entidade</label>
-                  <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.entidade} onChange={e => setFormData({...formData, entidade: e.target.value})}>
+                  <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.entity} onChange={e => setFormData({...formData, entity: e.target.value})}>
                      <option value="">Selecione...</option>
                      {availableEntities.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
-                     {!availableEntities.find(e => e.name === formData.entidade) && formData.entidade && (
-                        <option value={formData.entidade}>{formData.entidade}</option>
+                     {!availableEntities.find(e => e.name === formData.entity) && formData.entity && (
+                        <option value={formData.entity}>{formData.entity}</option>
                      )}
                   </select>
                 </div>
 
                 <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Categoria</label>
-                  <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.categoria} onChange={e => setFormData({...formData, categoria: e.target.value})}>
+                  <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
                      <option value="">Selecione...</option>
                      {availableCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                     {!availableCategories.find(c => c.name === formData.categoria) && formData.categoria && (
-                        <option value={formData.categoria}>{formData.categoria}</option>
+                     {!availableCategories.find(c => c.name === formData.category) && formData.category && (
+                        <option value={formData.category}>{formData.category}</option>
                      )}
                   </select>
                 </div>
                 
                  <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Centro de Custo</label>
-                  <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.centroCusto} onChange={e => setFormData({...formData, centroCusto: e.target.value})}>
+                  <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.costCenter} onChange={e => setFormData({...formData, costCenter: e.target.value})}>
                      <option value="">Selecione...</option>
                      {settings.costCenters.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -682,22 +453,22 @@ const Transactions: React.FC<TransactionsProps> = ({
 
                 <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Valor Previsto {isInstallment && '(Total)'}</label>
-                  <input type="number" step="0.01" className={`w-full p-2 rounded border ${inputBg}`} value={formData.valorPrevisto} onChange={e => setFormData({...formData, valorPrevisto: parseFloat(e.target.value)})} />
-                  {isInstallment && <p className="text-[10px] text-gray-500">Será {(formData.valorPrevisto / installmentsCount).toFixed(2)} por parcela</p>}
+                  <input type="number" step="0.01" className={`w-full p-2 rounded border ${inputBg}`} value={formData.expectedAmount} onChange={e => setFormData({...formData, expectedAmount: parseFloat(e.target.value)})} />
+                  {isInstallment && <p className="text-[10px] text-gray-500">Será {(formData.expectedAmount / installmentsCount).toFixed(2)} por parcela</p>}
                 </div>
                 
                  <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Valor Realizado {isInstallment && '(Total)'}</label>
-                  <input type="number" step="0.01" className={`w-full p-2 rounded border ${inputBg}`} value={formData.valorRealizado} onChange={e => setFormData({...formData, valorRealizado: parseFloat(e.target.value)})} />
+                  <input type="number" step="0.01" className={`w-full p-2 rounded border ${inputBg}`} value={formData.actualAmount} onChange={e => setFormData({...formData, actualAmount: parseFloat(e.target.value)})} />
                 </div>
 
                 <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Data Vencimento {isInstallment && '(1ª Parcela)'}</label>
-                  <input type="date" className={`w-full p-2 rounded border ${inputBg}`} value={formData.dataVencimento} onChange={e => setFormData({...formData, dataVencimento: e.target.value})} />
+                  <input type="date" className={`w-full p-2 rounded border ${inputBg}`} value={formData.dueDate} onChange={e => setFormData({...formData, dueDate: e.target.value})} />
                 </div>
                  <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Data Competência</label>
-                  <input type="date" className={`w-full p-2 rounded border ${inputBg}`} value={formData.dataCompetencia} onChange={e => setFormData({...formData, dataCompetencia: e.target.value})} />
+                  <input type="date" className={`w-full p-2 rounded border ${inputBg}`} value={formData.accrualDate} onChange={e => setFormData({...formData, accrualDate: e.target.value})} />
                 </div>
 
                 <div className="space-y-1">

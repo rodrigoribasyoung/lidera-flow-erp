@@ -9,7 +9,7 @@ import Accounts from './components/Accounts';
 import Help from './components/Help';
 import { Transaction, AppSettings, Account } from './types';
 import { MOCK_TRANSACTIONS, MOCK_SETTINGS, MOCK_ACCOUNTS } from './constants';
-import { transactionService } from './services/firebase';
+import { transactionService, settingsService, accountsService } from './services/firebase';
 
 const App: React.FC = () => {
   // Theme State
@@ -19,7 +19,7 @@ const App: React.FC = () => {
 
   // Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>(MOCK_ACCOUNTS);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
   const [loading, setLoading] = useState(true);
 
@@ -35,21 +35,70 @@ const App: React.FC = () => {
   }, [darkMode]);
 
   useEffect(() => {
-    const fetchTransactions = async () => {
-      // Try to fetch from Firebase
-      const firebaseData = await transactionService.getAll();
-      
-      if (firebaseData.length > 0) {
-        setTransactions(firebaseData);
-      } else {
-        // Fallback to Mock Data if Firebase is empty/fails
-        console.log("Using Mock Data (Firebase empty or error)");
+    const fetchAllData = async () => {
+      try {
+        // Fetch all data from Firebase in parallel
+        const [firebaseTransactions, firebaseSettings, firebaseAccounts] = await Promise.all([
+          transactionService.getAll(),
+          settingsService.get(),
+          accountsService.getAll()
+        ]);
+
+        // Set transactions
+        setTransactions(firebaseTransactions);
+        if (firebaseTransactions.length === 0) {
+          console.log("No transactions found in Firebase. Start adding transactions to see them here.");
+        }
+
+        // Set settings
+        if (firebaseSettings) {
+          setSettings(firebaseSettings);
+        } else {
+          // If no settings in Firebase, use mock and save to Firebase
+          console.log("No settings in Firebase - initializing with mock data");
+          setSettings(MOCK_SETTINGS);
+          try {
+            await settingsService.save(MOCK_SETTINGS);
+            console.log("Settings initialized in Firebase");
+          } catch (error) {
+            console.error("Failed to initialize settings in Firebase:", error);
+          }
+        }
+
+        // Set accounts
+        if (firebaseAccounts.length > 0) {
+          setAccounts(firebaseAccounts);
+        } else {
+          // If no accounts in Firebase, use mock and save to Firebase
+          console.log("No accounts in Firebase - initializing with mock data");
+          setAccounts(MOCK_ACCOUNTS);
+          try {
+            for (const account of MOCK_ACCOUNTS) {
+              const { id, ...accountData } = account;
+              await accountsService.add(accountData);
+            }
+            // Reload accounts to get Firebase IDs
+            const savedAccounts = await accountsService.getAll();
+            if (savedAccounts.length > 0) {
+              setAccounts(savedAccounts);
+            }
+            console.log("Accounts initialized in Firebase");
+          } catch (error) {
+            console.error("Failed to initialize accounts in Firebase:", error);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching data from Firebase:", error);
+        // Fallback to mock data on error
         setTransactions(MOCK_TRANSACTIONS);
+        setSettings(MOCK_SETTINGS);
+        setAccounts(MOCK_ACCOUNTS);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
-    fetchTransactions();
+    fetchAllData();
   }, []);
 
   const toggleTheme = () => setDarkMode(!darkMode);
@@ -142,16 +191,63 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateSettings = (newSettings: AppSettings) => {
-    setSettings(newSettings);
+  const handleUpdateSettings = async (newSettings: AppSettings) => {
+    try {
+      // Save to Firebase
+      await settingsService.save(newSettings);
+      // Update local state
+      setSettings(newSettings);
+    } catch (error: any) {
+      console.error("Error saving settings to Firebase:", error);
+      // Still update local state for better UX
+      setSettings(newSettings);
+      
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        console.warn("⚠️ Permissão negada - Configure as regras do Firestore");
+      } else {
+        alert("Erro ao salvar configurações no Firebase. As alterações foram salvas localmente.");
+      }
+    }
   };
 
-  const handleAddAccount = (acc: Account) => {
-    setAccounts([...accounts, acc]);
+  const handleAddAccount = async (acc: Account) => {
+    try {
+      // Save to Firebase
+      const { id, ...accountData } = acc;
+      const docRef = await accountsService.add(accountData);
+      // Update local state with Firebase ID
+      const newAccount = { ...acc, id: docRef.id };
+      setAccounts([...accounts, newAccount]);
+    } catch (error: any) {
+      console.error("Error adding account to Firebase:", error);
+      // Fallback: add to local state
+      setAccounts([...accounts, acc]);
+      
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        alert("⚠️ ERRO: Permissão negada pelo Firestore.\n\nConfigure as regras de segurança no console do Firebase:\nhttps://console.firebase.google.com/project/lidera-flow/firestore/rules");
+      } else {
+        alert("Erro ao salvar conta no Firebase. A conta foi adicionada localmente.");
+      }
+    }
   };
 
-  const handleDeleteAccount = (id: string) => {
-     setAccounts(accounts.filter(a => a.id !== id));
+  const handleDeleteAccount = async (id: string) => {
+    try {
+      // Delete from Firebase
+      await accountsService.delete(id);
+      // Update local state
+      setAccounts(accounts.filter(a => a.id !== id));
+    } catch (error: any) {
+      console.error("Error deleting account from Firebase:", error);
+      // Still remove from local state for better UX
+      setAccounts(accounts.filter(a => a.id !== id));
+      
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        console.warn("⚠️ Permissão negada - Configure as regras do Firestore");
+      } else {
+        alert("Erro ao deletar conta no Firebase. A conta foi removida localmente.");
+      }
+    }
   };
 
   if (loading) {
