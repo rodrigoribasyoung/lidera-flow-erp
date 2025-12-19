@@ -256,7 +256,7 @@ function EditableTable<T extends { id: string }>({
             </tr>
           </thead>
           <tbody>
-            {data.map((item, idx) => (
+            {data.map((item) => (
               <tr
                 key={getId(item)}
                 className={`border-b ${borderColor} ${darkMode ? 'hover:bg-zinc-800/30' : 'hover:bg-slate-50'}`}
