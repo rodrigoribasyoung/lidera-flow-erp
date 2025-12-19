@@ -57,10 +57,22 @@ export const transactionService = {
         date: cleanTransaction.dueDate
       });
       
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:54',message:'Before addDoc',data:{description:cleanTransaction.description,expectedAmount:cleanTransaction.expectedAmount},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
       const docRef = await addDoc(collection(db, TRANSACTIONS_COLLECTION), cleanTransaction);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:60',message:'After addDoc',data:{docId:docRef.id,description:cleanTransaction.description},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
       console.log('✅ Transação salva com ID:', docRef.id);
       return docRef;
     } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'firebase.ts:63',message:'Error in addDoc',data:{errorCode:error?.code,errorMessage:error?.message,description:transaction.description},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       console.error("❌ Error adding transaction:", error);
       console.error("Transaction data:", transaction);
       if (error?.code === 'permission-denied') {
