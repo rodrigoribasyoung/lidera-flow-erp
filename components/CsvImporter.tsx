@@ -414,11 +414,12 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
     setImportErrors(errors);
 
     // #region agent log
-    console.log('🔍 DEBUG: Checking save condition', { errorsLength: errors.length, newTransactionsLength: newTransactions.length, conditionMet: errors.length === 0 && newTransactions.length > 0 });
-    fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:398',message:'Checking save condition',data:{errorsLength:errors.length,newTransactionsLength:newTransactions.length,conditionMet:errors.length === 0 && newTransactions.length > 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    console.log('🔍 DEBUG: Checking save condition', { errorsLength: errors.length, newTransactionsLength: newTransactions.length, conditionMet: newTransactions.length > 0 });
+    fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:398',message:'Checking save condition',data:{errorsLength:errors.length,newTransactionsLength:newTransactions.length,conditionMet:newTransactions.length > 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
 
-    if (errors.length === 0 && newTransactions.length > 0) {
+    // Save transactions if there are any valid ones, even if there are some errors
+    if (newTransactions.length > 0) {
       setImportProgress({ 
         current: allCsvRows.length, 
         total: allCsvRows.length + newTransactions.length, 
@@ -449,7 +450,10 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
         const entityMsg = importEntities && entityMap.size > 0 
           ? `\n${entityMap.size} entidades processadas.`
           : '';
-        alert(`✅ Importação concluída!\n\n${newTransactions.length} transações importadas.\n${skippedCount} duplicatas ignoradas.${updatedCount > 0 ? `\n${updatedCount} atualizadas.` : ''}${entityMsg}${errors.length > 0 ? `\n${errors.length} erros encontrados.` : ''}`);
+        const errorMsg = errors.length > 0 
+          ? `\n\n⚠️ ${errors.length} linha(s) com erro foram ignoradas (verifique os detalhes abaixo).`
+          : '';
+        alert(`✅ Importação concluída!\n\n${newTransactions.length} transações importadas.\n${skippedCount} duplicatas ignoradas.${updatedCount > 0 ? `\n${updatedCount} atualizadas.` : ''}${entityMsg}${errorMsg}`);
       } catch (error: any) {
         // #region agent log
         console.error('🔍 DEBUG: Error in onImport', error);
@@ -462,15 +466,6 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
         setImportProgress({ current: 0, total: 0, message: '' });
         alert(`❌ Erro na importação:\n\n${errorMsg}\n\nVerifique o console para mais detalhes.`);
       }
-    } else if (errors.length > 0) {
-      // #region agent log
-      console.log('🔍 DEBUG: Skipping save - has errors', { errorsLength: errors.length, newTransactionsLength: newTransactions.length });
-      fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CsvImporter.tsx:423',message:'Skipping save - has errors',data:{errorsLength:errors.length,newTransactionsLength:newTransactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,E'})}).catch(()=>{});
-      // #endregion
-      setImportErrors(errors);
-      setIsImporting(false);
-      setImportProgress({ current: 0, total: 0, message: '' });
-      alert(`⚠️ Importação concluída com erros:\n\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? `\n... e mais ${errors.length - 10} erros` : ''}`);
     } else {
       // #region agent log
       console.log('🔍 DEBUG: No valid transactions', { errorsLength: errors.length, newTransactionsLength: newTransactions.length });
