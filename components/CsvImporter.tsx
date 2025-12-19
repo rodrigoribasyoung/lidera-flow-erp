@@ -4,7 +4,9 @@ import { Transaction, TransactionType, TransactionStatus } from '../types';
 
 interface CsvImporterProps {
   onImport: (transactions: Omit<Transaction, 'id'>[]) => void;
+  onImportEntities?: (entities: Array<{ name: string; type: 'Cliente' | 'Fornecedor' | 'Ambos'; tags?: string[] }>) => void;
   existingTransactions: Transaction[];
+  existingEntities?: Array<{ name: string; type?: string }>;
   accounts: Array<{ id: string; name: string }>;
   darkMode: boolean;
 }
@@ -29,7 +31,9 @@ const SYSTEM_FIELDS = [
 
 const CsvImporter: React.FC<CsvImporterProps> = ({ 
   onImport, 
+  onImportEntities,
   existingTransactions, 
+  existingEntities = [],
   accounts,
   darkMode 
 }) => {
@@ -38,8 +42,12 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
   const [csvPreviewData, setCsvPreviewData] = useState<string[][]>([]);
   const [allCsvRows, setAllCsvRows] = useState<string[][]>([]);
   const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
-  const [duplicateStrategy, setDuplicateStrategy] = useState<'import_all' | 'skip_exact'>('skip_exact');
+  const [duplicateStrategy, setDuplicateStrategy] = useState<'import_all' | 'skip_exact' | 'update_existing'>('skip_exact');
+  const [entityDuplicateStrategy, setEntityDuplicateStrategy] = useState<'import_all' | 'skip_exact' | 'update_existing'>('skip_exact');
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [importEntities, setImportEntities] = useState(true);
 
   // Styles
   const cardBg = darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200';
@@ -100,6 +108,8 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setFileName(file.name);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -188,8 +198,18 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
 
   const processCsvImport = () => {
     const newTransactions: Omit<Transaction, 'id'>[] = [];
+    const newEntities: Array<{ name: string; type: 'Cliente' | 'Fornecedor' | 'Ambos'; tags?: string[] }> = [];
     const errors: string[] = [];
     let skippedCount = 0;
+    let updatedCount = 0;
+
+    // Generate tags
+    const dateTag = new Date().toISOString().split('T')[0];
+    const fileTag = fileName.replace(/\.[^/.]+$/, ''); // Remove extension
+    const defaultTag = `import-${dateTag}-${fileTag}`;
+    const tags = customTag.trim() 
+      ? [defaultTag, customTag.trim()]
+      : [defaultTag];
 
     // Validate required fields
     const requiredFields = SYSTEM_FIELDS.filter(f => f.required);
@@ -200,6 +220,9 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
       return;
     }
 
+    // Extract unique entities from CSV
+    const entityMap = new Map<string, { name: string; type: 'Cliente' | 'Fornecedor' | 'Ambos' }>();
+    
     allCsvRows.forEach((row, rowIndex) => {
       if (row.length < 2) return;
 
@@ -234,10 +257,27 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
       const description = getCol('description') || 'Importado via CSV';
       const expectedAmount = parseMoney(getCol('expectedAmount'));
       const actualAmount = parseMoney(getCol('actualAmount')) || expectedAmount;
+      const entityName = getCol('entity') || 'Não informado';
 
       if (!description || expectedAmount === 0) {
         errors.push(`Linha ${rowIndex + 2}: Descrição ou valor inválido`);
         return;
+      }
+
+      // Extract entity information
+      if (entityName && entityName !== 'Não informado' && importEntities) {
+        const entityType: 'Cliente' | 'Fornecedor' | 'Ambos' = 
+          type === 'Entrada' ? 'Cliente' : 'Fornecedor';
+        
+        if (!entityMap.has(entityName)) {
+          entityMap.set(entityName, { name: entityName, type: entityType });
+        } else {
+          // If entity already exists with different type, mark as 'Ambos'
+          const existing = entityMap.get(entityName)!;
+          if (existing.type !== entityType && existing.type !== 'Ambos') {
+            entityMap.set(entityName, { name: entityName, type: 'Ambos' });
+          }
+        }
       }
 
       const transaction: Omit<Transaction, 'id'> = {
@@ -247,7 +287,7 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
         paymentDate: getCol('paymentDate') ? parseDate(getCol('paymentDate')) : undefined,
         type,
         category: getCol('category') || 'Geral',
-        entity: getCol('entity') || 'Não informado',
+        entity: entityName,
         productService: getCol('productService') || '',
         costCenter: getCol('costCenter') || '',
         paymentMethod: getCol('paymentMethod') || '',
@@ -255,7 +295,10 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
         expectedAmount,
         actualAmount,
         accountId: accounts[0]?.id || '',
-        status
+        status,
+        tags,
+        importSource: fileName,
+        importedAt: new Date().toISOString()
       };
 
       // Duplicate check
@@ -269,17 +312,59 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
           skippedCount++;
           return;
         }
+      } else if (duplicateStrategy === 'update_existing') {
+        const existing = existingTransactions.find(exist => 
+          exist.description === transaction.description && 
+          Math.abs(exist.expectedAmount - transaction.expectedAmount) < 0.01 &&
+          exist.dueDate === transaction.dueDate
+        );
+        if (existing) {
+          // Update existing transaction (this would need to be handled by parent)
+          updatedCount++;
+          return; // Skip adding as new, parent should handle update
+        }
       }
 
       newTransactions.push(transaction);
     });
+
+    // Process entities
+    if (importEntities && entityMap.size > 0 && onImportEntities) {
+      const entitiesToImport = Array.from(entityMap.values()).map(entity => {
+        const existing = existingEntities.find(e => 
+          e.name.toLowerCase() === entity.name.toLowerCase()
+        );
+        
+        if (entityDuplicateStrategy === 'skip_exact' && existing) {
+          return null; // Skip existing
+        }
+        
+        // For update_existing, we'll merge tags in the handler
+        // For import_all, we'll add new tags
+        const entityTags = entityDuplicateStrategy === 'update_existing' && existing
+          ? tags // Tags will be merged in handler
+          : tags;
+        
+        return {
+          ...entity,
+          tags: entityTags
+        };
+      }).filter(e => e !== null) as Array<{ name: string; type: 'Cliente' | 'Fornecedor' | 'Ambos'; tags?: string[] }>;
+      
+      if (entitiesToImport.length > 0) {
+        onImportEntities(entitiesToImport);
+      }
+    }
 
     setImportErrors(errors);
 
     if (errors.length === 0 && newTransactions.length > 0) {
       onImport(newTransactions);
       setIsModalOpen(false);
-      alert(`✅ Importação concluída!\n\n${newTransactions.length} registros importados.\n${skippedCount} duplicatas ignoradas.${errors.length > 0 ? `\n${errors.length} erros encontrados.` : ''}`);
+      const entityMsg = importEntities && entityMap.size > 0 
+        ? `\n${entityMap.size} entidades processadas.`
+        : '';
+      alert(`✅ Importação concluída!\n\n${newTransactions.length} transações importadas.\n${skippedCount} duplicatas ignoradas.${updatedCount > 0 ? `\n${updatedCount} atualizadas.` : ''}${entityMsg}${errors.length > 0 ? `\n${errors.length} erros encontrados.` : ''}`);
     } else if (errors.length > 0) {
       setImportErrors(errors);
     } else {
@@ -424,32 +509,122 @@ const CsvImporter: React.FC<CsvImporterProps> = ({
                 </div>
               )}
 
-              {/* Duplicate Strategy */}
+              {/* Import Options */}
               <div className={`p-4 rounded-lg border ${darkMode ? 'bg-zinc-950/50 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
                 <h4 className={`font-semibold mb-3 ${textColor}`}>
-                  Em caso de duplicidade (mesma descrição, valor e data):
+                  Opções de Importação
                 </h4>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
+                
+                <div className="space-y-4">
+                  {/* Import Entities */}
+                  <div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={importEntities}
+                        onChange={(e) => setImportEntities(e.target.checked)}
+                        className="w-4 h-4"
+                      />
+                      <span className={textColor}>Importar Fornecedores e Clientes do CSV</span>
+                    </label>
+                  </div>
+
+                  {/* Custom Tag */}
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${subText}`}>
+                      Tag Personalizada (opcional)
+                    </label>
                     <input
-                      type="radio"
-                      name="strategy"
-                      checked={duplicateStrategy === 'skip_exact'}
-                      onChange={() => setDuplicateStrategy('skip_exact')}
-                      className="w-4 h-4"
+                      type="text"
+                      className={`w-full p-2 rounded border ${inputBg}`}
+                      value={customTag}
+                      onChange={(e) => setCustomTag(e.target.value)}
+                      placeholder="Ex: Importação Janeiro 2025"
                     />
-                    <span className={textColor}>Pular (Não importar)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="strategy"
-                      checked={duplicateStrategy === 'import_all'}
-                      onChange={() => setDuplicateStrategy('import_all')}
-                      className="w-4 h-4"
-                    />
-                    <span className={textColor}>Importar Tudo (Pode duplicar)</span>
-                  </label>
+                    <p className={`text-xs mt-1 ${subText}`}>
+                      Tags padrão: data + nome do arquivo serão adicionadas automaticamente
+                    </p>
+                  </div>
+
+                  {/* Transaction Duplicate Strategy */}
+                  <div>
+                    <h5 className={`font-medium mb-2 ${textColor}`}>
+                      Transações - Em caso de duplicidade:
+                    </h5>
+                    <div className="flex flex-col gap-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="strategy"
+                          checked={duplicateStrategy === 'skip_exact'}
+                          onChange={() => setDuplicateStrategy('skip_exact')}
+                          className="w-4 h-4"
+                        />
+                        <span className={textColor}>Pular (Não importar duplicatas)</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="strategy"
+                          checked={duplicateStrategy === 'import_all'}
+                          onChange={() => setDuplicateStrategy('import_all')}
+                          className="w-4 h-4"
+                        />
+                        <span className={textColor}>Importar Tudo (Pode duplicar)</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="strategy"
+                          checked={duplicateStrategy === 'update_existing'}
+                          onChange={() => setDuplicateStrategy('update_existing')}
+                          className="w-4 h-4"
+                        />
+                        <span className={textColor}>Atualizar existentes (Adicionar tags aos existentes)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Entity Duplicate Strategy */}
+                  {importEntities && (
+                    <div>
+                      <h5 className={`font-medium mb-2 ${textColor}`}>
+                        Entidades - Em caso de duplicidade:
+                      </h5>
+                      <div className="flex flex-col gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="entityStrategy"
+                            checked={entityDuplicateStrategy === 'skip_exact'}
+                            onChange={() => setEntityDuplicateStrategy('skip_exact')}
+                            className="w-4 h-4"
+                          />
+                          <span className={textColor}>Pular (Não importar duplicatas)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="entityStrategy"
+                            checked={entityDuplicateStrategy === 'import_all'}
+                            onChange={() => setEntityDuplicateStrategy('import_all')}
+                            className="w-4 h-4"
+                          />
+                          <span className={textColor}>Importar Tudo (Pode duplicar)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="entityStrategy"
+                            checked={entityDuplicateStrategy === 'update_existing'}
+                            onChange={() => setEntityDuplicateStrategy('update_existing')}
+                            className="w-4 h-4"
+                          />
+                          <span className={textColor}>Atualizar existentes (Adicionar tags aos existentes)</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

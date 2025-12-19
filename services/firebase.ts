@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
-import { Transaction, AppSettings, Account } from "../types";
+import { Transaction, AppSettings, Account, Entity } from "../types";
 
 const firebaseConfig = {
   apiKey: "AIzaSyADEtHK6sKc306bJkCcEinKENcnPO2T3wo",
@@ -21,6 +21,7 @@ const googleProvider = new GoogleAuthProvider();
 export const TRANSACTIONS_COLLECTION = "transactions";
 export const SETTINGS_COLLECTION = "settings";
 export const ACCOUNTS_COLLECTION = "accounts";
+export const ENTITIES_COLLECTION = "entities";
 const SETTINGS_DOC_ID = "main"; // Single document for settings
 
 // Service functions
@@ -152,6 +153,80 @@ export const accountsService = {
     } catch (error: any) {
       console.error("Error deleting account:", error);
       if (error.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+        throw new Error("Permissão negada pelo Firestore. Configure as regras de segurança.");
+      }
+      throw error;
+    }
+  }
+};
+
+// Entities Service
+export const entityService = {
+  getAll: async (): Promise<Entity[]> => {
+    try {
+      const querySnapshot = await getDocs(collection(db, ENTITIES_COLLECTION));
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Entity));
+    } catch (error: any) {
+      console.error("Error fetching entities:", error);
+      if (error?.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+      }
+      return [];
+    }
+  },
+  getByType: async (type: 'Cliente' | 'Fornecedor' | 'Ambos'): Promise<Entity[]> => {
+    try {
+      const all = await entityService.getAll();
+      return all.filter(e => e.type === type || e.type === 'Ambos');
+    } catch (error: any) {
+      console.error("Error fetching entities by type:", error);
+      return [];
+    }
+  },
+  getById: async (id: string): Promise<Entity | null> => {
+    try {
+      const docRef = doc(db, ENTITIES_COLLECTION, id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() } as Entity;
+      }
+      return null;
+    } catch (error: any) {
+      console.error("Error fetching entity:", error);
+      return null;
+    }
+  },
+  add: async (entity: Omit<Entity, 'id'>) => {
+    try {
+      return await addDoc(collection(db, ENTITIES_COLLECTION), entity);
+    } catch (error: any) {
+      console.error("Error adding entity:", error);
+      if (error?.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+        throw new Error("Permissão negada pelo Firestore. Configure as regras de segurança.");
+      }
+      throw error;
+    }
+  },
+  update: async (id: string, data: Partial<Entity>) => {
+    try {
+      return await updateDoc(doc(db, ENTITIES_COLLECTION, id), data);
+    } catch (error: any) {
+      console.error("Error updating entity:", error);
+      if (error?.code === 'permission-denied') {
+        console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
+        throw new Error("Permissão negada pelo Firestore. Configure as regras de segurança.");
+      }
+      throw error;
+    }
+  },
+  delete: async (id: string) => {
+    try {
+      return await deleteDoc(doc(db, ENTITIES_COLLECTION, id));
+    } catch (error: any) {
+      console.error("Error deleting entity:", error);
+      if (error?.code === 'permission-denied') {
         console.error("❌ PERMISSÃO NEGADA: Verifique as regras de segurança do Firestore");
         throw new Error("Permissão negada pelo Firestore. Configure as regras de segurança.");
       }

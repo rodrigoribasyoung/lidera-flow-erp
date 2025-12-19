@@ -8,9 +8,10 @@ import Reports from './components/Reports';
 import Accounts from './components/Accounts';
 import Help from './components/Help';
 import Login from './components/Login';
-import { Transaction, AppSettings, Account } from './types';
+import { Transaction, AppSettings, Account, Entity } from './types';
 import { MOCK_TRANSACTIONS, MOCK_SETTINGS, MOCK_ACCOUNTS } from './constants';
-import { transactionService, settingsService, accountsService, authService } from './services/firebase';
+import { transactionService, settingsService, accountsService, entityService, authService } from './services/firebase';
+import Entities from './components/Entities';
 import { User } from 'firebase/auth';
 
 const App: React.FC = () => {
@@ -26,6 +27,7 @@ const App: React.FC = () => {
   // Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [entities, setEntities] = useState<Entity[]>([]);
   const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS);
   const [loading, setLoading] = useState(true);
 
@@ -53,10 +55,11 @@ const App: React.FC = () => {
     const fetchAllData = async () => {
       try {
         // Fetch all data from Firebase in parallel
-        const [firebaseTransactions, firebaseSettings, firebaseAccounts] = await Promise.all([
+        const [firebaseTransactions, firebaseSettings, firebaseAccounts, firebaseEntities] = await Promise.all([
           transactionService.getAll(),
           settingsService.get(),
-          accountsService.getAll()
+          accountsService.getAll(),
+          entityService.getAll()
         ]);
 
         // Set transactions
@@ -100,6 +103,40 @@ const App: React.FC = () => {
             console.log("Accounts initialized in Firebase");
           } catch (error) {
             console.error("Failed to initialize accounts in Firebase:", error);
+          }
+        }
+
+        // Set entities and migrate from settings if needed
+        if (firebaseEntities.length > 0) {
+          setEntities(firebaseEntities);
+        } else {
+          // Migrate entities from settings to new collection
+          console.log("No entities in Firebase - checking for migration from settings");
+          if (firebaseSettings?.entities && firebaseSettings.entities.length > 0) {
+            try {
+              const currentUser = authService.getCurrentUser();
+              const userId = currentUser?.uid || 'system';
+              const now = new Date().toISOString();
+              
+              for (const entityItem of firebaseSettings.entities) {
+                const entityData: Omit<Entity, 'id'> = {
+                  name: entityItem.name,
+                  type: entityItem.type,
+                  createdAt: now,
+                  updatedAt: now,
+                  createdBy: userId,
+                  isActive: true,
+                  tags: ['migrated-from-settings']
+                };
+                await entityService.add(entityData);
+              }
+              
+              const migratedEntities = await entityService.getAll();
+              setEntities(migratedEntities);
+              console.log(`Migrated ${migratedEntities.length} entities from settings to new collection`);
+            } catch (error) {
+              console.error("Failed to migrate entities from settings:", error);
+            }
           }
         }
       } catch (error) {
@@ -284,6 +321,116 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAddEntity = async (entity: Omit<Entity, 'id'>) => {
+    try {
+      const currentUser = authService.getCurrentUser();
+      const entityWithUser = {
+        ...entity,
+        createdBy: currentUser?.uid || 'system',
+        createdAt: entity.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isActive: entity.isActive !== false
+      };
+      const docRef = await entityService.add(entityWithUser);
+      const newEntity = { ...entityWithUser, id: docRef.id };
+      setEntities([...entities, newEntity]);
+    } catch (error: any) {
+      console.error("Error adding entity to Firebase:", error);
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        alert("⚠️ ERRO: Permissão negada pelo Firestore.\n\nConfigure as regras de segurança no console do Firebase:\nhttps://console.firebase.google.com/project/lidera-flow/firestore/rules");
+      } else {
+        alert("Erro ao salvar entidade no Firebase.");
+      }
+    }
+  };
+
+  const handleUpdateEntity = async (id: string, updated: Partial<Entity>) => {
+    try {
+      const updatedWithTimestamp = {
+        ...updated,
+        updatedAt: new Date().toISOString()
+      };
+      await entityService.update(id, updatedWithTimestamp);
+      setEntities(entities.map(e => e.id === id ? { ...e, ...updatedWithTimestamp } : e));
+    } catch (error: any) {
+      console.error("Error updating entity in Firebase:", error);
+      setEntities(entities.map(e => e.id === id ? { ...e, ...updated } : e));
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        console.warn("⚠️ Permissão negada - Configure as regras do Firestore");
+      } else {
+        alert("Erro ao atualizar entidade no Firebase.");
+      }
+    }
+  };
+
+  const handleDeleteEntity = async (id: string) => {
+    try {
+      await entityService.delete(id);
+      setEntities(entities.filter(e => e.id !== id));
+    } catch (error: any) {
+      console.error("Error deleting entity from Firebase:", error);
+      setEntities(entities.filter(e => e.id !== id));
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        console.warn("⚠️ Permissão negada - Configure as regras do Firestore");
+      } else {
+        alert("Erro ao deletar entidade no Firebase.");
+      }
+    }
+  };
+
+  const handleImportEntities = async (entitiesToImport: Array<{ name: string; type: 'Cliente' | 'Fornecedor' | 'Ambos'; tags?: string[] }>) => {
+    try {
+      const currentUser = authService.getCurrentUser();
+      const userId = currentUser?.uid || 'system';
+      const now = new Date().toISOString();
+      
+      const addedEntities: Entity[] = [];
+      
+      for (const entityData of entitiesToImport) {
+        // Check if entity already exists
+        const existing = entities.find(e => 
+          e.name.toLowerCase() === entityData.name.toLowerCase()
+        );
+        
+        if (existing) {
+          // Update existing entity with new tags
+          const updatedTags = [...new Set([...(existing.tags || []), ...(entityData.tags || [])])];
+          await entityService.update(existing.id, {
+            tags: updatedTags,
+            updatedAt: now
+          });
+          addedEntities.push({ ...existing, tags: updatedTags, updatedAt: now });
+        } else {
+          // Add new entity
+          const newEntity: Omit<Entity, 'id'> = {
+            name: entityData.name,
+            type: entityData.type,
+            tags: entityData.tags || [],
+            createdAt: now,
+            updatedAt: now,
+            createdBy: userId,
+            isActive: true
+          };
+          const docRef = await entityService.add(newEntity);
+          addedEntities.push({ ...newEntity, id: docRef.id });
+        }
+      }
+      
+      // Reload entities to get all updates
+      const allEntities = await entityService.getAll();
+      setEntities(allEntities);
+      
+      console.log(`Imported ${addedEntities.length} entities`);
+    } catch (error: any) {
+      console.error("Error importing entities:", error);
+      if (error?.message?.includes('Permissão negada') || error?.code === 'permission-denied') {
+        alert("⚠️ ERRO: Permissão negada pelo Firestore ao importar entidades.");
+      } else {
+        alert("Erro ao importar entidades do CSV.");
+      }
+    }
+  };
+
   // Show loading while checking auth
   if (authLoading || loading) {
     return (
@@ -328,12 +475,14 @@ const App: React.FC = () => {
               <Transactions 
                 transactions={transactions} 
                 accounts={accounts}
+                entities={entities}
                 settings={settings}
                 darkMode={darkMode}
                 onAdd={handleAddTransaction}
                 onDelete={handleDeleteTransaction}
                 onUpdate={handleUpdateTransaction}
                 onBulkAdd={handleBulkAddTransactions}
+                onImportEntities={handleImportEntities}
               />
             } 
           />
@@ -343,12 +492,14 @@ const App: React.FC = () => {
               <Transactions 
                 transactions={transactions} 
                 accounts={accounts}
+                entities={entities}
                 settings={settings}
                 darkMode={darkMode}
                 onAdd={handleAddTransaction}
                 onDelete={handleDeleteTransaction}
                 onUpdate={handleUpdateTransaction}
                 onBulkAdd={handleBulkAddTransactions}
+                onImportEntities={handleImportEntities}
               />
             } 
           />
@@ -375,6 +526,30 @@ const App: React.FC = () => {
                  onAddAccount={handleAddAccount}
                  onUpdateAccount={handleUpdateAccount}
                  onDeleteAccount={handleDeleteAccount}
+              />
+            }
+          />
+          <Route 
+            path="/entities" 
+            element={
+              <Entities 
+                entities={entities}
+                darkMode={darkMode}
+                onAddEntity={handleAddEntity}
+                onUpdateEntity={handleUpdateEntity}
+                onDeleteEntity={handleDeleteEntity}
+              />
+            }
+          />
+          <Route 
+            path="/fornecedores-clientes" 
+            element={
+              <Entities 
+                entities={entities}
+                darkMode={darkMode}
+                onAddEntity={handleAddEntity}
+                onUpdateEntity={handleUpdateEntity}
+                onDeleteEntity={handleDeleteEntity}
               />
             }
           />

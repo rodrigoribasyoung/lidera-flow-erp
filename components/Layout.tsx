@@ -11,7 +11,8 @@ import {
   Moon,
   Landmark,
   HelpCircle,
-  LogOut
+  LogOut,
+  Users
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -31,6 +32,7 @@ const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme, user, 
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/transactions', icon: ArrowRightLeft, label: 'Lançamentos' },
     { to: '/accounts', icon: Landmark, label: 'Contas & Caixas' },
+    { to: '/entities', icon: Users, label: 'Fornecedores & Clientes' },
     { to: '/reports', icon: PieChart, label: 'Relatórios' },
     { to: '/settings', icon: Settings, label: 'Configurações' },
     { to: '/help', icon: HelpCircle, label: 'Ajuda' },

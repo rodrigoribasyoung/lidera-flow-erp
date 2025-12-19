@@ -28,6 +28,9 @@ export interface Transaction {
   paymentDate?: string; // Data de Pagamento/Recebimento
   accrualDate: string; // Data de Competência
   status: TransactionStatus;
+  tags?: string[]; // Tags for tracking imports and custom labels
+  importSource?: string; // Source file name for imports
+  importedAt?: string; // Import timestamp
 }
 
 export interface CategoryItem {
@@ -40,6 +43,41 @@ export interface EntityItem {
   id: string;
   name: string;
   type: 'Cliente' | 'Fornecedor' | 'Ambos';
+}
+
+// Full Entity interface for dedicated registration system
+export interface Entity {
+  id: string;
+  name: string;
+  type: 'Cliente' | 'Fornecedor' | 'Ambos';
+  
+  // Contact Information
+  email?: string;
+  phone?: string;
+  website?: string;
+  
+  // Fiscal Information
+  document?: string; // CPF/CNPJ
+  documentType?: 'CPF' | 'CNPJ';
+  
+  // Address
+  address?: {
+    street?: string;
+    number?: string;
+    complement?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+  };
+  
+  // Metadata
+  notes?: string;
+  tags?: string[]; // Tags for tracking imports and custom labels
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string; // userId
+  isActive: boolean;
 }
 
 export interface AppSettings {

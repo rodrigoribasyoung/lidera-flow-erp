@@ -1,24 +1,26 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Search, Trash2, Edit2, X, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { Transaction, AppSettings, TransactionType, TransactionStatus, Account } from '../types';
+import { Transaction, AppSettings, TransactionType, TransactionStatus, Account, Entity } from '../types';
 import CsvImporter from './CsvImporter';
 
 interface TransactionsProps {
   transactions: Transaction[];
   accounts: Account[];
+  entities: Entity[];
   settings: AppSettings;
   darkMode: boolean;
   onAdd: (t: Omit<Transaction, 'id'>) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, t: Partial<Transaction>) => void;
   onBulkAdd: (transactions: Omit<Transaction, 'id'>[]) => void;
+  onImportEntities?: (entities: Array<{ name: string; type: 'Cliente' | 'Fornecedor' | 'Ambos'; tags?: string[] }>) => void;
 }
 
 type SortField = 'dueDate' | 'description' | 'valor' | 'entity';
 type SortDirection = 'asc' | 'desc';
 
 const Transactions: React.FC<TransactionsProps> = ({ 
-  transactions, accounts, settings, darkMode, onAdd, onDelete, onUpdate, onBulkAdd 
+  transactions, accounts, entities, settings, darkMode, onAdd, onDelete, onUpdate, onBulkAdd, onImportEntities
 }) => {
   const [filter, setFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -205,10 +207,16 @@ const Transactions: React.FC<TransactionsProps> = ({
     return c.type === 'Despesa';
   });
 
-  const availableEntities = settings.entities.filter(e => {
-      if (formData.type === 'Entrada') return e.type === 'Cliente' || e.type === 'Ambos';
-      return e.type === 'Fornecedor' || e.type === 'Ambos';
-  });
+  // Use entities from Firebase, fallback to settings.entities for backward compatibility
+  const availableEntitiesList = entities.length > 0 
+    ? entities.filter(e => {
+        if (formData.type === 'Entrada') return e.type === 'Cliente' || e.type === 'Ambos';
+        return e.type === 'Fornecedor' || e.type === 'Ambos';
+      })
+    : settings.entities.filter((e: any) => {
+        if (formData.type === 'Entrada') return e.type === 'Cliente' || e.type === 'Ambos';
+        return e.type === 'Fornecedor' || e.type === 'Ambos';
+      });
 
   return (
     <div className="space-y-6">
@@ -220,7 +228,9 @@ const Transactions: React.FC<TransactionsProps> = ({
         <div className="flex gap-2">
           <CsvImporter
             onImport={onBulkAdd}
+            onImportEntities={onImportEntities}
             existingTransactions={transactions}
+            existingEntities={entities.map(e => ({ name: e.name, type: e.type }))}
             accounts={accounts}
             darkMode={darkMode}
           />
@@ -425,8 +435,8 @@ const Transactions: React.FC<TransactionsProps> = ({
                   <label className={`text-xs font-medium ${subText}`}>Entidade</label>
                   <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.entity} onChange={e => setFormData({...formData, entity: e.target.value})}>
                      <option value="">Selecione...</option>
-                     {availableEntities.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
-                     {!availableEntities.find(e => e.name === formData.entity) && formData.entity && (
+                     {availableEntitiesList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)}
+                     {!availableEntitiesList.find((e: any) => e.name === formData.entity) && formData.entity && (
                         <option value={formData.entity}>{formData.entity}</option>
                      )}
                   </select>
