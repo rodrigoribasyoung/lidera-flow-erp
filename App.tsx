@@ -179,6 +179,10 @@ const App: React.FC = () => {
   };
 
   const handleBulkAddTransactions = async (newTs: Omit<Transaction, 'id'>[]) => {
+    // #region agent log
+    console.log('🔍 DEBUG: handleBulkAddTransactions START', { newTsLength: newTs.length, firstTransaction: newTs[0]?.description });
+    fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:181',message:'handleBulkAddTransactions START',data:{newTsLength:newTs.length,firstTransaction:newTs[0]?.description},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,D'})}).catch(()=>{});
+    // #endregion
     console.log(`🚀 Iniciando salvamento de ${newTs.length} transações no Firebase...`);
     
     try {
@@ -247,8 +251,16 @@ const App: React.FC = () => {
       
       // Update local state only with successfully saved transactions
       if (addedTransactions.length > 0) {
+        // #region agent log
+        console.log('🔍 DEBUG: Updating local state', { addedTransactionsLength: addedTransactions.length, existingTransactionsLength: transactions.length });
+        fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:210',message:'Updating local state',data:{addedTransactionsLength:addedTransactions.length,existingTransactionsLength:transactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         setTransactions([...addedTransactions, ...transactions]);
         console.log(`✅ Total de ${addedTransactions.length} transações salvas no Firebase e estado local atualizado`);
+      } else {
+        // #region agent log
+        console.log('🔍 DEBUG: No transactions were saved', { addedTransactionsLength: addedTransactions.length, failedTransactionsLength: failedTransactions.length });
+        // #endregion
       }
       
       // Report failures
@@ -275,6 +287,10 @@ const App: React.FC = () => {
       }
       
     } catch (error: any) {
+      // #region agent log
+      console.error('🔍 DEBUG: Critical error in handleBulkAddTransactions', error);
+      fetch('http://127.0.0.1:7243/ingest/502487e6-e738-4f19-8c30-b57c802ce46b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:225',message:'Critical error in handleBulkAddTransactions',data:{errorCode:error?.code,errorMessage:error?.message,errorStack:error?.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       console.error("❌ Erro crítico ao adicionar transações em lote:", error);
       console.error('Detalhes:', {
         code: error?.code,
