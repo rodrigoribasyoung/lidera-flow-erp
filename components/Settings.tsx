@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AppSettings } from '../types';
-import { Plus, Trash2, Edit2, X, Check } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface SettingsProps {
   settings: AppSettings;
@@ -8,10 +8,17 @@ interface SettingsProps {
   onUpdateSettings: (s: AppSettings) => void;
 }
 
+type SortField = 'name' | 'type';
+type SortDirection = 'asc' | 'desc';
+
 const Settings: React.FC<SettingsProps> = ({ settings, darkMode, onUpdateSettings }) => {
   const [activeTab, setActiveTab] = useState<keyof AppSettings>('categories');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  // Sorting state (only for entities tab)
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   // Form State
   const [itemName, setItemName] = useState('');
@@ -105,6 +112,47 @@ const Settings: React.FC<SettingsProps> = ({ settings, darkMode, onUpdateSetting
     { key: 'costCenters', label: 'Centros de Custo' },
   ];
 
+  // Handle sorting
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Sort icon component
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown size={14} className="opacity-30" />;
+    return sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />;
+  };
+
+  // Sorted entities list
+  const sortedEntities = useMemo(() => {
+    if (activeTab !== 'entities') return settings.entities;
+    
+    return [...settings.entities].sort((a, b) => {
+      let valA: any = a[sortField];
+      let valB: any = b[sortField];
+      
+      if (sortField === 'name') {
+        valA = valA.toLowerCase();
+        valB = valB.toLowerCase();
+      }
+      
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [settings.entities, activeTab, sortField, sortDirection]);
+
+  // Get display list based on active tab
+  const displayList = useMemo(() => {
+    if (activeTab === 'entities') return sortedEntities;
+    return settings[activeTab];
+  }, [activeTab, settings, sortedEntities]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -144,8 +192,74 @@ const Settings: React.FC<SettingsProps> = ({ settings, darkMode, onUpdateSetting
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
-             {settings[activeTab].map((item: any, index: number) => {
+          {activeTab === 'entities' ? (
+            // Table view for entities with sorting
+            <div className={`rounded-lg border overflow-hidden ${darkMode ? 'border-zinc-800' : 'border-slate-200'}`}>
+              <table className="w-full text-sm">
+                <thead className={`text-xs uppercase font-semibold ${darkMode ? 'bg-zinc-800/50' : 'bg-slate-50'} ${subText}`}>
+                  <tr>
+                    <th 
+                      className="px-4 py-3 text-left cursor-pointer hover:text-blue-500"
+                      onClick={() => handleSort('name')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Nome <SortIcon field="name" />
+                      </div>
+                    </th>
+                    <th 
+                      className="px-4 py-3 text-left cursor-pointer hover:text-blue-500"
+                      onClick={() => handleSort('type')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Tipo <SortIcon field="type" />
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className={`divide-y ${darkMode ? 'divide-zinc-800' : 'divide-slate-200'}`}>
+                  {sortedEntities.map((item: any, index: number) => {
+                    const originalIndex = settings.entities.findIndex(e => e.id === item.id);
+                    return (
+                      <tr key={item.id} className={`group transition-colors ${darkMode ? 'hover:bg-zinc-800/30' : 'hover:bg-slate-50'}`}>
+                        <td className={`px-4 py-3 font-medium ${textColor}`}>{item.name}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                            item.type === 'Cliente' 
+                              ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                              : item.type === 'Fornecedor'
+                                ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                                : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                          }`}>
+                            {item.type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => openEditModal(originalIndex, item)}
+                              className={`p-2 rounded ${darkMode ? 'hover:bg-zinc-700 text-blue-400' : 'hover:bg-blue-100 text-blue-600'}`}
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleDelete(originalIndex)}
+                              className={`p-2 rounded ${darkMode ? 'hover:bg-zinc-700 text-red-400' : 'hover:bg-red-100 text-red-600'}`}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            // List view for other tabs
+            <div className="grid grid-cols-1 gap-3">
+              {displayList.map((item: any, index: number) => {
                 const isObject = typeof item === 'object';
                 const name = isObject ? item.name : item;
                 const type = isObject ? item.type : null;
@@ -182,8 +296,9 @@ const Settings: React.FC<SettingsProps> = ({ settings, darkMode, onUpdateSetting
                      </div>
                   </div>
                 );
-             })}
-          </div>
+              })}
+            </div>
+          )}
         </div>
       </div>
 

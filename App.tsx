@@ -218,6 +218,7 @@ const App: React.FC = () => {
                   onDelete={handleDeleteTransaction}
                   onUpdate={handleUpdateTransaction}
                   onBulkAdd={handleBulkAddTransactions}
+                  onUpdateSettings={handleUpdateSettings}
                 />
               } 
             />

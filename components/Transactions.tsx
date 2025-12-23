@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Search, Trash2, Edit2, X, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Upload, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, Check } from 'lucide-react';
 import { Transaction, AppSettings, TransactionType, TransactionStatus, Account } from '../types';
 
 interface TransactionsProps {
@@ -11,13 +11,14 @@ interface TransactionsProps {
   onDelete: (id: string) => void;
   onUpdate: (id: string, t: Partial<Transaction>) => void;
   onBulkAdd: (transactions: Omit<Transaction, 'id'>[]) => void;
+  onUpdateSettings?: (settings: AppSettings) => void;
 }
 
 type SortField = 'dataVencimento' | 'descricao' | 'valor' | 'entidade';
 type SortDirection = 'asc' | 'desc';
 
 const Transactions: React.FC<TransactionsProps> = ({ 
-  transactions, accounts, settings, darkMode, onAdd, onDelete, onUpdate, onBulkAdd 
+  transactions, accounts, settings, darkMode, onAdd, onDelete, onUpdate, onBulkAdd, onUpdateSettings 
 }) => {
   const [filter, setFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -61,6 +62,12 @@ const Transactions: React.FC<TransactionsProps> = ({
   };
 
   const [formData, setFormData] = useState(initialFormState);
+
+  // Search states for entity and cost center
+  const [entitySearch, setEntitySearch] = useState('');
+  const [costCenterSearch, setCostCenterSearch] = useState('');
+  const [isAddingCostCenter, setIsAddingCostCenter] = useState(false);
+  const [newCostCenterName, setNewCostCenterName] = useState('');
 
   // --- Handlers ---
 
@@ -107,6 +114,10 @@ const Transactions: React.FC<TransactionsProps> = ({
     setFormData(initialFormState);
     setIsInstallment(false);
     setInstallmentsCount(2);
+    setEntitySearch('');
+    setCostCenterSearch('');
+    setIsAddingCostCenter(false);
+    setNewCostCenterName('');
   };
 
   const handleEdit = (t: Transaction) => {
@@ -334,10 +345,39 @@ const Transactions: React.FC<TransactionsProps> = ({
     return c.type === 'Despesa';
   });
 
-  const availableEntities = settings.entities.filter(e => {
+  const availableEntities = settings.entities
+    .filter(e => {
       if (formData.tipo === 'Entrada') return e.type === 'Cliente' || e.type === 'Ambos';
       return e.type === 'Fornecedor' || e.type === 'Ambos';
-  });
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')); // Sort alphabetically
+
+  // Filtered entities based on search
+  const filteredEntities = availableEntities.filter(e =>
+    e.name.toLowerCase().includes(entitySearch.toLowerCase())
+  );
+
+  // Filtered cost centers based on search
+  const filteredCostCenters = settings.costCenters
+    .filter(cc => cc.toLowerCase().includes(costCenterSearch.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR')); // Sort alphabetically
+
+  // Handler to add new cost center
+  const handleAddCostCenter = () => {
+    if (newCostCenterName.trim() && !settings.costCenters.includes(newCostCenterName.trim())) {
+      const updatedSettings = {
+        ...settings,
+        costCenters: [...settings.costCenters, newCostCenterName.trim()]
+      };
+      if (onUpdateSettings) {
+        onUpdateSettings(updatedSettings);
+      }
+      setFormData({...formData, centroCusto: newCostCenterName.trim()});
+      setNewCostCenterName('');
+      setIsAddingCostCenter(false);
+      setCostCenterSearch('');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -652,13 +692,61 @@ const Transactions: React.FC<TransactionsProps> = ({
 
                 <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Entidade</label>
-                  <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.entidade} onChange={e => setFormData({...formData, entidade: e.target.value})}>
-                     <option value="">Selecione...</option>
-                     {availableEntities.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
-                     {!availableEntities.find(e => e.name === formData.entidade) && formData.entidade && (
-                        <option value={formData.entidade}>{formData.entidade}</option>
-                     )}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className={`w-full p-2 rounded border ${inputBg}`}
+                      value={entitySearch || formData.entidade}
+                      onChange={(e) => {
+                        setEntitySearch(e.target.value);
+                        if (filteredEntities.length === 1 && filteredEntities[0].name === e.target.value) {
+                          setFormData({...formData, entidade: e.target.value});
+                          setEntitySearch('');
+                        } else if (e.target.value === '') {
+                          setFormData({...formData, entidade: ''});
+                        }
+                      }}
+                      onBlur={() => {
+                        // If exact match found, set it
+                        const match = filteredEntities.find(e => e.name.toLowerCase() === entitySearch.toLowerCase());
+                        if (match) {
+                          setFormData({...formData, entidade: match.name});
+                          setEntitySearch('');
+                        } else if (entitySearch && !formData.entidade) {
+                          // Allow custom entry
+                          setFormData({...formData, entidade: entitySearch});
+                          setEntitySearch('');
+                        } else {
+                          setEntitySearch('');
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && filteredEntities.length > 0) {
+                          e.preventDefault();
+                          setFormData({...formData, entidade: filteredEntities[0].name});
+                          setEntitySearch('');
+                        }
+                      }}
+                      placeholder="Buscar ou digite o nome..."
+                    />
+                    {entitySearch && filteredEntities.length > 0 && (
+                      <div className={`absolute z-10 w-full mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg ${cardBg}`}>
+                        {filteredEntities.slice(0, 10).map(e => (
+                          <button
+                            key={e.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData({...formData, entidade: e.name});
+                              setEntitySearch('');
+                            }}
+                            className={`w-full text-left px-3 py-2 hover:bg-opacity-50 ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-slate-100'} ${textColor}`}
+                          >
+                            {e.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -674,10 +762,118 @@ const Transactions: React.FC<TransactionsProps> = ({
                 
                  <div className="space-y-1">
                   <label className={`text-xs font-medium ${subText}`}>Centro de Custo</label>
-                  <select className={`w-full p-2 rounded border ${inputBg}`} value={formData.centroCusto} onChange={e => setFormData({...formData, centroCusto: e.target.value})}>
-                     <option value="">Selecione...</option>
-                     {settings.costCenters.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <div className="relative">
+                    <div className="flex gap-2">
+                      <div className="flex-1 relative">
+                        <input
+                          type="text"
+                          className={`w-full p-2 rounded border ${inputBg}`}
+                          value={costCenterSearch || formData.centroCusto}
+                          onChange={(e) => {
+                            setCostCenterSearch(e.target.value);
+                            if (filteredCostCenters.length === 1 && filteredCostCenters[0] === e.target.value) {
+                              setFormData({...formData, centroCusto: e.target.value});
+                              setCostCenterSearch('');
+                            } else if (e.target.value === '') {
+                              setFormData({...formData, centroCusto: ''});
+                            }
+                          }}
+                          onBlur={() => {
+                            // If exact match found, set it
+                            const match = filteredCostCenters.find(cc => cc.toLowerCase() === costCenterSearch.toLowerCase());
+                            if (match) {
+                              setFormData({...formData, centroCusto: match});
+                              setCostCenterSearch('');
+                            } else if (costCenterSearch && !formData.centroCusto && !isAddingCostCenter) {
+                              // Allow custom entry
+                              setFormData({...formData, centroCusto: costCenterSearch});
+                              setCostCenterSearch('');
+                            } else {
+                              setCostCenterSearch('');
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && filteredCostCenters.length > 0) {
+                              e.preventDefault();
+                              setFormData({...formData, centroCusto: filteredCostCenters[0]});
+                              setCostCenterSearch('');
+                            }
+                          }}
+                          placeholder="Buscar ou digite o nome..."
+                          disabled={isAddingCostCenter}
+                        />
+                        {costCenterSearch && filteredCostCenters.length > 0 && !isAddingCostCenter && (
+                          <div className={`absolute z-10 w-full mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg ${cardBg}`}>
+                            {filteredCostCenters.slice(0, 10).map(cc => (
+                              <button
+                                key={cc}
+                                type="button"
+                                onClick={() => {
+                                  setFormData({...formData, centroCusto: cc});
+                                  setCostCenterSearch('');
+                                }}
+                                className={`w-full text-left px-3 py-2 hover:bg-opacity-50 ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-slate-100'} ${textColor}`}
+                              >
+                                {cc}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {!isAddingCostCenter ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingCostCenter(true);
+                            setNewCostCenterName(costCenterSearch || formData.centroCusto || '');
+                            setCostCenterSearch('');
+                          }}
+                          className={`p-2 rounded border ${darkMode ? 'border-zinc-700 hover:bg-zinc-800' : 'border-slate-300 hover:bg-slate-50'}`}
+                          title="Adicionar novo Centro de Custo"
+                        >
+                          <Plus size={18} className={subText} />
+                        </button>
+                      ) : (
+                        <div className="flex gap-1">
+                          <input
+                            type="text"
+                            className={`w-32 p-2 rounded border ${inputBg}`}
+                            value={newCostCenterName}
+                            onChange={(e) => setNewCostCenterName(e.target.value)}
+                            placeholder="Novo nome..."
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleAddCostCenter();
+                              } else if (e.key === 'Escape') {
+                                setIsAddingCostCenter(false);
+                                setNewCostCenterName('');
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddCostCenter}
+                            className={`p-2 rounded border ${darkMode ? 'border-emerald-700 bg-emerald-500/20 hover:bg-emerald-500/30' : 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100'}`}
+                            title="Confirmar"
+                          >
+                            <Check size={18} className="text-emerald-600 dark:text-emerald-400" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsAddingCostCenter(false);
+                              setNewCostCenterName('');
+                            }}
+                            className={`p-2 rounded border ${darkMode ? 'border-zinc-700 hover:bg-zinc-800' : 'border-slate-300 hover:bg-slate-50'}`}
+                            title="Cancelar"
+                          >
+                            <X size={18} className={subText} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-1">
